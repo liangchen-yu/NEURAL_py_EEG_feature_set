@@ -299,7 +299,7 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
         for ch in range(data_ref.shape[1]):
             x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                data_ref[channel_names_ref[ch]].to_numpy(), Fs, 20, 0.5, 5
+                data_ref[channel_names_ref[ch]].to_numpy(copy=True), Fs, 20, 0.5, 5
             )
 
         r = np.corrcoef(x_filt)
@@ -347,7 +347,7 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
             x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
             for ch in range(N_channels):
                 x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                    data[ch_labels[ichannels[ch]]].to_numpy(), Fs, 20, 0.5, 5
+                    data[ch_labels[ichannels[ch]]].to_numpy(copy=True), Fs, 20, 0.5, 5
                 )
 
             A = []  # to suppress warning
@@ -392,7 +392,7 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
     for n in ichannels:
         data[ch_labels[n]], tmpp = art_per_channel(
-            data[ch_labels[n]].to_numpy(), Fs, DBverbose
+            data[ch_labels[n]].to_numpy(copy=True), Fs, DBverbose
         )
         if ct == 0:
             amount_removed[ct, :] = tmpp
