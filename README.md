@@ -1,3 +1,11 @@
+> **About this fork:** NEURAL_py by Brian M. Murphy and John M. O'Toole
+> (UCC, BSD-3-Clause), forked at commit 78c9425, with one change:
+> `preprocessing_EEG.py` copies each channel's array (`.to_numpy(copy=True)`)
+> before artefact removal, so preprocessing works with pandas 3
+> (Copy-on-Write). On synthetic data, results and the artefact report are
+> identical to pandas 2.3.3. Used for INFANT neural-eeg-ui project.
+
+
 NEURAL_py: A Neonatal EEG Feature Set in python
 ============================================
 
