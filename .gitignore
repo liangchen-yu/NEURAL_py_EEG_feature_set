@@ -1,0 +1,9 @@
+# Files made by Python, pip and pytest
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+# virtual environments
+.venv*/
+venv*/
