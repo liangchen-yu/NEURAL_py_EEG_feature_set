@@ -411,6 +411,9 @@ def filter_zerophase(
     Outputs:
         y - filtered signal
 
+    Note: x itself is changed: any NaN in it are set to 0. So x must be a
+    writable array; from pandas 3 on, use e.g. .to_numpy(copy=True).
+
     Example:
         import utils
         import matplotlib.pyplot as plt
@@ -418,7 +421,7 @@ def filter_zerophase(
 
         Fs = 64
         data_st = utils.gen_test_EEGdata(32, Fs, 1)
-        x = data_st['eeg_data'][data_st['ch_labels'][0]].values
+        x = data_st['eeg_data'][data_st['ch_labels'][0]].to_numpy(copy=True)
         LP_fc = 20
         HP_fc = 1
 
@@ -531,6 +534,11 @@ def filter_butterworth_withnans(
         y - filtered signal
         inans - locations of nans
 
+    Note: with FILTER_REPLACE_ARTEFACTS 'zeros' or 'linear_interp' (the
+    default), the NaN in x itself are filled (remove_artefacts relies on
+    this), so x must be a writable array; from pandas 3 on, use e.g.
+    .to_numpy(copy=True). 'cubic_interp' and 'nans' work on a copy of x.
+
     Example:
         import utils
         import matplotlib.pyplot as plt
@@ -538,7 +546,7 @@ def filter_butterworth_withnans(
 
         Fs = 64
         data_st = utils.gen_test_EEGdata(32, Fs, 1)
-        x = data_st['eeg_data'][data_st['ch_labels'][0]].values
+        x = data_st['eeg_data'][data_st['ch_labels'][0]].to_numpy(copy=True)
         F3db_lowpass = 30
         F3db_highpass = 0.5
 
@@ -604,6 +612,8 @@ def replace_start_ends_NaNs_with_zeros(x):
     ---------------------------------------------------------------------
      replace leading or trailing NaNs with zeros (needed for naninterp)
     ---------------------------------------------------------------------
+    Changes x itself and returns it, so x must be a writable array. After
+    leading NaN, the first non-NaN sample is set to 0 as well.
     """
     N = len(x)
     istart = np.argwhere(~np.isnan(x))[0][0]
@@ -622,6 +632,7 @@ def naninterp(X, method="linear"):
     ---------------------------------------------------------------------
      fill 'gaps' in data (marked by NaN) by interpolating
     ---------------------------------------------------------------------
+    Changes X itself and returns it, so X must be a writable array.
 
     """
     inan = np.argwhere(np.isnan(X))

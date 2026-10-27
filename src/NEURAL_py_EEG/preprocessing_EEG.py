@@ -122,6 +122,10 @@ def art_per_channel(x, Fs, DBverbose):
     :param x: data from a single channel - numpy array
     :param Fs: sampling frequency
     :return: x, data with artefacts set as nan
+
+    Note: x itself is changed too (artefacts are set to NaN in it), so it must
+    be a writable array; remove_artefacts passes a copy of each channel
+    (.to_numpy(copy=True)), as needed from pandas 3 on.
     """
     params = NEURAL_parameters.NEURAL_parameters()
 
