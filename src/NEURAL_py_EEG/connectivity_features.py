@@ -50,6 +50,10 @@ def gen_cross_spectrum(x, y, Fs, param_st):
     spec_method = param_st["method"]
 
     # remove nans
+    # This line never changes the values of x (without NaN it assigns nothing,
+    # with NaN it raises an error), but it needs a writable array and pandas 3
+    # gives read-only ones; so it works on a private copy.
+    x = x.copy()
     x[np.isnan(x)] = []
     if spec_method.lower() == "bartlett-psd":
         # ---------------------------------------------------------------------
