@@ -755,14 +755,22 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["digital_min"] = f.getDigitalMinimum(loc)
             ch_dict["digital_max"] = f.getDigitalMaximum(loc)
             ch_dict["dimension"] = f.getPhysicalDimension(loc)
-            ch_dict["sample_rate"] = f.getSampleFrequency(loc)
+            # pyedflib 0.1.41+ refuses the old key name "sample_rate"
+            # (same meaning: samples per second).
+            ch_dict["sample_frequency"] = f.getSampleFrequency(loc)
             ch_dict["label"] = ch
             ch_dict["transducer"] = f.getTransducer(loc)
             ch_dict["prefilter"] = f.getPrefilter(loc)
 
             samples_in_file.append(data.shape[0])
-            x = data[ch].to_numpy()
-            x[np.where(np.isnan(x))[0]] = 0
+            # pandas 3 gives a read-only array, so work on a copy. NaN are
+            # written as 0. In the original, pandas < 3 gave a view, so the
+            # caller's DataFrame got the 0s too: keep that explicitly.
+            x = data[ch].to_numpy(copy=True)
+            inans = np.where(np.isnan(x))[0]
+            x[inans] = 0
+            if inans.size != 0:
+                data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
     else:
@@ -774,14 +782,18 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["digital_min"] = -32767
             ch_dict["digital_max"] = 32767
             ch_dict["dimension"] = "uV"
-            ch_dict["sample_rate"] = Fs
+            ch_dict["sample_frequency"] = Fs  # was "sample_rate", see above
             ch_dict["label"] = ch
             ch_dict["transducer"] = ""
             ch_dict["prefilter"] = ""
 
             samples_in_file.append(data.shape[0])
-            x = data[ch].to_numpy()
-            x[np.where(np.isnan(x))[0]] = 0
+            # writable copy; NaN -> 0 here and in the caller's DataFrame (see above)
+            x = data[ch].to_numpy(copy=True)
+            inans = np.where(np.isnan(x))[0]
+            x[inans] = 0
+            if inans.size != 0:
+                data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
 
