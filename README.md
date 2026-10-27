@@ -1,9 +1,11 @@
+[![tests](../../actions/workflows/tests.yml/badge.svg)](../../actions/workflows/tests.yml)
+
 > **About this fork:** NEURAL_py by Brian M. Murphy and John M. O'Toole
-> (UCC, BSD-3-Clause), forked at commit 78c9425, with one change:
-> `preprocessing_EEG.py` copies each channel's array (`.to_numpy(copy=True)`)
-> before artefact removal, so preprocessing works with pandas 3
-> (Copy-on-Write). On synthetic data, results and the artefact report are
-> identical to pandas 2.3.3. Used for INFANT neural-eeg-ui project.
+> (UCC, BSD-3-Clause), forked at commit 78c9425 and updated to work with
+> current Python libraries (pandas 3, SciPy 1.13+, pyedflib 0.1.41+).
+> Regression tests show it gives the same results as the original code.
+> Used for INFANT neural-eeg-ui project. Details, tested versions and install
+> notes: see [Maintenance](#maintenance).
 
 
 NEURAL_py: A Neonatal EEG Feature Set in python
@@ -240,3 +242,224 @@ University College Cork,
 Ireland
 
 - email: Brian.M.Murphy AT umail dot ucc dot ie 
+
+
+## Maintenance
+
+This fork keeps NEURAL_py working with current Python libraries. Regression
+tests show that it gives the same numbers as the original code (commit
+[78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be)).
+No algorithm or default parameter was changed.
+
+**What "the same" covers.**
+
+*Exactly the same* (largest difference 0), compared with the original code
+run with the same library versions on the same computer:
+
+- the default pipeline: EDF file → `preprocessing_EEG.main_preprocessing` →
+  `generate_all_features`, for all 26 non-IBI features (summary, per-epoch and
+  per-channel values), the artefact report and the removed channels, on a
+  clean and an artefact-laden synthetic EDF file;
+- data that already contain NaN when given to `remove_artefacts`: the
+  artefact report, every feature's summary values (one per frequency band;
+  per-channel and per-epoch values are not stored for this case), sampled
+  checks of the cleaned and preprocessed EEG (where it is NaN, sums, minimum
+  and maximum, every 997th sample), and the change the original also makes
+  to the referential DataFrame it is given;
+- the step of `remove_artefacts` that turns +inf into NaN, checked in the same
+  way (no input reaches it, so the test supplies the infinities through a
+  stand-in);
+- EDF export with `utils.save_pd_as_edf`: the same digital samples and the
+  same values in the checked header fields (label, unit, sample frequency,
+  physical and digital range), and the same change to the DataFrame it is
+  given;
+- the same EEG with a datetime, text or integer row index, through
+  `generate_all_features` (feature summaries), the preprocessing steps and
+  `preprocessing_EEG.overlap_epochs`: the same results, and the same errors
+  where the original stopped;
+- `connectivity_features.gen_coherence` given read-only arrays (as pandas 3
+  gives): the original's values, with its inputs left unchanged.
+
+*Within a tolerance*, because other library versions change the last digits:
+
+- the window types `'tuke'`, `'bart'` and `'blackmanharris'`, compared with
+  the original in its 2020 environment (old SciPy): the windows themselves
+  are identical, and the listed features agree to within 2e-15 relative
+  under the tested settings: spectral flatness, entropy, diff and edge
+  frequency; the rEEG features without their frequency-band filter; and BSI
+  with method "PSD". Under other settings coherence can also depend on the
+  window; that is not covered;
+- the one-off comparison with the 2020 environment and the web-browser check
+  described below.
+
+Not covered: IBI (burst) features, which need a separate burst detector; real
+recordings; parameter settings other than those above; categorical, interval
+or multi-level row indexes; Linux and macOS (only Windows has been tested so
+far).
+
+**What changed and why**
+
+- `preprocessing_EEG.remove_artefacts`: each channel is copied before it is
+  filtered (`.to_numpy(copy=True)`), because pandas 3 (Copy-on-Write) gives
+  read-only arrays and NEURAL writes into them.
+- `preprocessing_EEG.remove_artefacts`, referential and electrode-coupling
+  checks: when a channel already contains NaN, the filter's filled-in values
+  are written back to the DataFrame. The original did this without saying so
+  (pandas < 3 gave a view of the DataFrame), and the cleaned output depends
+  on it; without it, data with NaN gave different results.
+- `preprocessing_EEG.remove_artefacts`: `data[col][idx] = np.nan` became one
+  `.loc` assignment with a True/False mask, because pandas 3 silently ignores
+  this "chained assignment". No input reaches this line: an infinity either
+  makes one of NEURAL's filters stop with an error first (as in the
+  original), or, right next to a run of zeros of 1 s or more, is turned into
+  NaN before it.
+- `generate_all_features.overlap_epochs` and `preprocessing_EEG.overlap_epochs`:
+  with pandas < 3, `x[positions]` on a pandas Series picked samples by
+  position when the row index holds no numbers (for example dates or text)
+  and by label otherwise; pandas 3 always uses labels, so a datetime or text
+  index failed. The new `utils.index_like_pandas2` keeps the pandas < 3 rule.
+- `connectivity_features.gen_cross_spectrum` (and so `gen_coherence`): works on
+  a private copy of its input. One of its lines never changes the values but
+  still needed a writable array, and pandas 3 gives read-only ones.
+- The docstrings of the functions that change their input in place say so
+  (see "Known limitations" below), and two docstring examples use
+  `.to_numpy(copy=True)` instead of `.values`.
+- `utils.save_pd_as_edf`: works on a copy (pandas 3 gives read-only arrays)
+  and, as before, also sets NaN to 0 in the DataFrame it is given; uses the
+  header key `sample_frequency`, because pyedflib 0.1.41 and later refuse the
+  old name `sample_rate` (same meaning).
+- `utils.get_window`, `utils.gen_window`: `'tuke'`, `'bart'` and
+  `'blackmanharris'` come from `scipy.signal.windows`, because SciPy 1.13
+  removed them from `scipy.signal` (same functions, same values).
+- `utils.py`: a docstring now writes `'$\\mu$V'` instead of `'$\mu$V'` (the
+  same text), because `\m` is an invalid escape sequence (`SyntaxWarning`).
+- `setup.cfg`: the dependencies are declared (none were before), with the
+  oldest tested versions as lower bounds and `python_requires >=3.14`.
+- New: `tests/` (regression tests and reference values), `requirements-dev.txt`,
+  pytest settings in `pyproject.toml`, `.gitignore`, and
+  `.github/workflows/tests.yml` (automatic tests on GitHub).
+
+**Install** (Python 3.14; from this folder, ideally in a virtual environment)
+
+    python -m pip install -e .
+    python -m pip install -r requirements-dev.txt
+
+`-e` ("editable") means Python uses the code in this folder. pyedflib 0.1.42
+has no ready-made package for Python 3.14, so pip compiles it: on Windows
+this needs the Microsoft C++ Build Tools, on Linux a C compiler.
+
+**Run the tests**
+
+    python -m pytest
+
+This takes about 45 seconds. pytest first shows which NEURAL and library
+versions it uses (and stops if it would test any copy of NEURAL other than
+this folder's `src/`); at the end it prints the largest difference from the
+reference values for each group.
+
+**How the results were verified**
+
+- Inputs: two synthetic EDF files (300 s, 256 Hz, 9 electrodes; no real
+  recordings): "clean", and "artefacts", whose deliberate artefacts trigger
+  each of NEURAL's artefact checks and both channel-removal checks.
+  `tests/synthetic_edf.py` makes them from a fixed seed with whole-number
+  arithmetic only, so they are byte-identical on every computer; the tests
+  check their SHA-256 checksums. An EDF file cannot contain NaN or infinity,
+  so the edge cases build their inputs from the same signals and call
+  NEURAL's functions directly (`tests/edge_cases.py`).
+- Reference values (`tests/data/`): made by `tests/make_reference.py` with the
+  original NEURAL. The script first checks that every NEURAL module is
+  byte-for-byte commit 78c9425 (SHA-256) and refuses to run otherwise. The
+  main and edge-case values come from the original with pandas 2.3.3; the
+  window values from the original in its 2020 environment, the only place
+  the old window functions still exist. The script's header lists the exact
+  commands.
+- Comparison: the tests check every stored value, allowing a relative
+  difference of 1e-9 (absolute 1e-12) so that they can also run with other
+  library versions; NaN must be NaN in both, and counts, positions and text
+  must be equal. With the versions in the "Main" row below, the actual
+  differences are 0, except for the comparison with the 2020 environment.
+  The main tests store every value. The edge cases store sampled checks of
+  the EEG (see above) and, for the features, only the summary values (one
+  per frequency band).
+- Reproducibility: the EDF inputs are byte-identical on any computer. The
+  reference values are reproducible in the environment recorded in each file
+  (`made_with`): running `tests/make_reference.py` there again gives
+  byte-identical files. `made_with` records the operating system as Python
+  reports it (Python 3.7, for example, calls Windows 11 "Windows 10").
+
+**Tested versions** (native, Windows 11, Python 3.14.7; all 28 tests pass)
+
+| | numpy | scipy | pandas | mne | matplotlib | pyedflib | Largest difference |
+|---|---|---|---|---|---|---|---|
+| Main | 2.5.3 | 1.18.1 | 2.3.3, 3.0.2, 3.0.6 and 3.1.0 | 1.13.2 | 3.11.2 | 0.1.42 | 0 |
+| Minimum versions | 2.4.6 | 1.18.0 | 2.3.3 and 3.0.2 | 1.13.2 | 3.10.8 | 0.1.42 | 3e-15 relative |
+| Newest (22 October 2026) | 2.5.4 | 1.18.1 | 3.1.0 | 1.13.2 | 3.11.2 | 0.1.42 | 0 |
+
+The "Largest difference" column leaves out the window-type comparison with the
+2020 environment, which every run also makes: at most 1.6e-15 relative.
+The lower bounds in `setup.cfg` are the "Minimum versions" row, plus Python
+3.14. The "Requirements" table above lists the versions the original code
+was written with.
+
+**Comparison with the original 2020 environment** (a one-off check, not part
+of the tests). The original NEURAL was also run on the same synthetic files
+with the versions in the Requirements table: Python 3.7.9, numpy 1.17.1,
+scipy 1.3.1, pandas 0.25.1, mne 0.18.2, matplotlib 3.1.1, and pyEDFlib 0.1.15
+(0.1.14 has no Python 3.7 build for Windows). The artefact report, the
+removed channels and the NaN placement were identical. Spectral, BSI and
+coherence features agreed to about 1e-14; amplitude, rEEG, connectivity_corr
+and FD features to within 3e-7 relative. These small differences come from
+last-digit changes in SciPy's filter routines, which NEURAL's 0.5 Hz
+Butterworth high-pass filter amplifies.
+
+**Web browser check** (a separate experiment, not included in this
+repository). NEURAL with the same pandas-3 fix also ran in a web browser
+(Pyodide 314.0.7: Python 3.14.2, numpy 2.4.6, scipy 1.18.0, pandas 3.0.2,
+mne 1.13.2, matplotlib 3.10.8; pyedflib cannot be installed there, and NEURAL
+only needs it for EDF export). All 26 non-IBI features ran; largest absolute
+difference vs native 3.7e-8 (relative about 2e-8; up to 2e-6 for values near
+zero), due to floating-point rounding in recursive filters. Spectral features
+agree to about 1e-15.
+
+**Automatic tests on GitHub.** `.github/workflows/tests.yml` runs the tests on
+every push and pull request, on Windows and Ubuntu, with Python 3.14 and with
+pandas 2.3.3 and the latest pandas 3.x; the other libraries are fixed to the
+versions the reference values were made with. The Windows steps were checked
+on a Windows PC. The Ubuntu jobs have not run yet: the reference values were
+made on Windows, and Linux maths libraries may round some last digits
+differently, which the strict tolerance would report.
+
+**Known limitations inherited from the original** (unchanged in this fork; the
+same with pandas 2.3.3 and pandas 3)
+
+- `generate_all_features(..., channel_names=[...])`: selecting channels fails
+  with a `KeyError`, whichever channels are named.
+- `utils.gen_test_EEGdata(..., discont_activity=1)` fails with an `IndexError`
+  for recordings shorter than 100 s (they get no bursts); 100 s or longer
+  works.
+- Row index: like pandas < 3, NEURAL looks samples up by label when the row
+  index holds integers. An integer index that does not start at 0 therefore
+  makes `generate_all_features` fail with a `KeyError`, and one in another
+  order uses the samples in label order. `remove_artefacts` with any index
+  other than 0, 1, 2, ... fails with a `KeyError` once it finds artefacts.
+- Some functions change the array they are given, so it must be writable;
+  from pandas 3 on, pass for example `.to_numpy(copy=True)` rather than
+  `.values`: `preprocessing_EEG.art_per_channel` (marks artefacts as NaN),
+  `utils.filter_zerophase` (sets NaN to 0), `utils.filter_butterworth_withnans`
+  (fills NaN, except in its `'cubic_interp'` and `'nans'` modes),
+  `utils.replace_start_ends_NaNs_with_zeros` and `utils.naninterp`.
+  `remove_artefacts` relies on this and passes copies itself.
+- Infinite values (+/-inf) that reach one of NEURAL's Butterworth filters
+  make `remove_artefacts` stop with an `IndexError` (in
+  `utils.replace_start_ends_NaNs_with_zeros`). An infinity right next to a
+  run of zeros of 1 s or more can be turned into NaN by the flat-zero check
+  first, and processing then completes, but only if no earlier step filters
+  the raw data: the referential check always filters the referential data,
+  and the electrode-coupling check filters the bipolar data when there are
+  more than 4 bipolar channels.
+- `utils.len_cont_zeros` warns "Must be a binary signal" when the signal *is*
+  binary (its check is the wrong way round). This is harmless; the tests hide
+  this one message.
+- `save_pd_as_edf`'s default physical minimum (-5482.288) has 9 characters but
+  an EDF header field holds 8, so pyedflib warns and stores -5482.28.
