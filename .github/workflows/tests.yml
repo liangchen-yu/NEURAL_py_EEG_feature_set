@@ -1,0 +1,51 @@
+# Runs the regression tests (tests/) on every push and pull request.
+# The tests compare with reference values committed in tests/data/, so the
+# original NEURAL is not needed here.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, pandas ${{ matrix.pandas }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # show every combination, even if one fails
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        pandas: ["2.3.3", "latest 3.x"]
+    steps:
+      # Actions are pinned to exact commits (the tag is in the comment).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      # The versions the reference values were made with, so the comparison
+      # is like for like. pyedflib has no ready-made package for Python 3.14,
+      # so pip compiles it (both runners have a C compiler).
+      - name: Install the tested library versions
+        run: python -m pip install numpy==2.5.3 scipy==1.18.1 mne==1.13.2 matplotlib==3.11.2 pyedflib==0.1.42 pytest==9.1.1
+
+      - name: Install pandas ${{ matrix.pandas }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.pandas }}" = "latest 3.x" ]; then
+            python -m pip install "pandas>=3,<4"
+          else
+            python -m pip install "pandas==${{ matrix.pandas }}"
+          fi
+
+      - name: Install NEURAL from this repository
+        run: python -m pip install -e .
+
+      - name: Show the installed versions
+        run: python -m pip list
+
+      - name: Run the tests
+        run: python -m pytest
