@@ -412,7 +412,11 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         ct += 1
         irem = np.append(irem, np.where(np.isnan(data[ch_labels[n]])))
         if any(np.isinf(data[ch_labels[n]])):
-            data[ch_labels[n]][np.where(data[ch_labels[n]] == np.inf)[0]] = np.nan
+            # The original wrote data[col][idx] = np.nan ("chained assignment"),
+            # which pandas 3 silently ignores. One .loc assignment with a
+            # True/False mask does the same in every pandas version. As
+            # before, only +inf becomes NaN.
+            data.loc[data[ch_labels[n]] == np.inf, ch_labels[n]] = np.nan
 
     # remove artefacts across all channels
 
