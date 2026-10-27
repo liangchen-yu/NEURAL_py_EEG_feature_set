@@ -298,9 +298,15 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
     if not data_ref.empty:
         x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
         for ch in range(data_ref.shape[1]):
-            x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                data_ref[channel_names_ref[ch]].to_numpy(copy=True), Fs, 20, 0.5, 5
-            )
+            # pandas 3 gives a read-only array, so filter a copy.
+            x_ref = data_ref[channel_names_ref[ch]].to_numpy(copy=True)
+            had_nans = np.isnan(x_ref).any()
+            x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_ref, Fs, 20, 0.5, 5)
+            if had_nans:
+                # The filter fills any NaN in the array it is given. The
+                # original passed pandas' own array (a view in pandas < 3), so
+                # this also filled the NaN in data_ref. Keep that explicitly.
+                data_ref[channel_names_ref[ch]] = x_ref
 
         r = np.corrcoef(x_filt)
         np.fill_diagonal(r, np.nan)
@@ -346,9 +352,14 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
             x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
             for ch in range(N_channels):
-                x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                    data[ch_labels[ichannels[ch]]].to_numpy(copy=True), Fs, 20, 0.5, 5
-                )
+                # As in step 0: filter a copy, then keep the original's side
+                # effect. The NaN filled here were also filled in data, so the
+                # per-channel artefact checks below saw the filled values.
+                x_bi = data[ch_labels[ichannels[ch]]].to_numpy(copy=True)
+                had_nans = np.isnan(x_bi).any()
+                x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_bi, Fs, 20, 0.5, 5)
+                if had_nans:
+                    data[ch_labels[ichannels[ch]]] = x_bi
 
             A = []  # to suppress warning
             for n in range(N_channels):
