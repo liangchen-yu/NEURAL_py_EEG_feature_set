@@ -234,7 +234,7 @@ def gen_test_EEGdata(dur, Fs, include_bipolar=0, discont_activity=0):
         ttime = np.array(range(len(x)))/Fs
         plt.plot(ttime, x)
         plt.xlabel('time (seconds)')
-        plt.ylabel('$\mu$V')
+        plt.ylabel('$\\mu$V')
         plt.show()
 
     """
