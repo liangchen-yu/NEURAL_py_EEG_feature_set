@@ -122,6 +122,27 @@ def pad_win(w, Npad):
     return w_pad
 
 
+def index_like_pandas2(x):
+    """
+    Make x[positions] pick the same samples that pandas < 3 picked.
+
+    For a pandas Series, x[[0, 1, 2]] used positions when the index does not
+    hold numbers (for example a datetime or text index) and labels when it
+    does (for example the default 0, 1, 2, ...). pandas 3 always uses labels,
+    which fails for a datetime or text index. This keeps the pandas < 3 rule:
+    for an index without numbers the values are returned as a NumPy array (so
+    [] uses positions); anything else is returned unchanged.
+    """
+    if isinstance(x, pd.Series) and x.index.inferred_type not in (
+        "integer",
+        "mixed-integer",
+        "floating",
+        "complex",
+    ):
+        return x.to_numpy()
+    return x
+
+
 # noinspection SpellCheckingInspection
 def gen_epoch_window(L_overlap, L_epoch, win_type, Fs, GEN_PSD=None):
     """

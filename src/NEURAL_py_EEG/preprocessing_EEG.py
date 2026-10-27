@@ -98,6 +98,9 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     x_epochs.fill(np.nan)
     x_epochs_inds = np.zeros([N_epochs, L_epoch])
 
+    # if x is a pandas Series: make x[nf] below pick the same samples as with
+    # pandas < 3 (pandas 3 would raise KeyError for a datetime index)
+    x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
         # zero-pad if outside x
