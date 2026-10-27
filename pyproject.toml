@@ -4,3 +4,12 @@ requires = [
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import NEURAL from this folder's src/ (the working copy), even if another
+# copy is installed; tests/conftest.py checks this.
+pythonpath = ["src"]
+# NEURAL's utils.len_cont_zeros warns "Must be a binary signal" during normal
+# use (its check is the wrong way round); hide only that message in test output.
+filterwarnings = ["ignore:Must be a binary signal:DeprecationWarning"]
