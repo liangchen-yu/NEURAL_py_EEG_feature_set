@@ -53,14 +53,16 @@ def get_window(win_length, win_type, Npad=0):
         win = np.ones(win_length)
     elif win_type == "black" or win_type == "blackman":
         win = np.blackman(win_length)
+    # SciPy 1.13 removed tukey, bartlett and blackmanharris from scipy.signal;
+    # the same functions are in scipy.signal.windows (since SciPy 1.1).
     elif win_type == "blackmanharris":
-        win = signal.blackmanharris(win_length)
+        win = signal.windows.blackmanharris(win_length)
     elif win_type == "kaiser":
         win = np.kaiser(win_length, 5)
     elif win_type == "tuke" or win_type == "tukey":
-        win = signal.tukey(win_length)
+        win = signal.windows.tukey(win_length)
     elif win_type == "bart" or win_type == "bartlett":
-        win = signal.bartlett(win_length)
+        win = signal.windows.bartlett(win_length)
     else:
         raise ValueError("Name of window function incorrect. Name: %s" % win_type)
 
@@ -478,7 +480,7 @@ def gen_window(win_type, L):
     elif win_type == "black" or win_type == "blackman":
         w = np.blackman(L)
     elif win_type == "blackmanharris":
-        w = signal.blackmanharris(L)
+        w = signal.windows.blackmanharris(L)  # removed from scipy.signal in SciPy 1.13
     elif win_type == "kaiser":
         w = np.kaiser(L, 5)
     else:
