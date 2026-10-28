@@ -1,6 +1,6 @@
 # Runs the regression tests (tests/) on every push and pull request.
-# The tests compare with reference values committed in tests/data/, so the
-# original NEURAL is not needed here.
+# Compare the fork with the original on the same runner; separately guard
+# against changes that affect both runs by checking the committed references.
 name: tests
 
 on:
@@ -14,6 +14,8 @@ jobs:
   test:
     name: ${{ matrix.os }}, pandas ${{ matrix.pandas }}
     runs-on: ${{ matrix.os }}
+    env:
+      MPLBACKEND: Agg # tests and reference generation must not open plot windows
     strategy:
       fail-fast: false # show every combination, even if one fails
       matrix:
@@ -47,5 +49,46 @@ jobs:
       - name: Show the installed versions
         run: python -m pip list
 
+      # pandas 2 and the original code must stay isolated from the fork.
+      - name: Install the original NEURAL in a second environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          REFERENCE_TEMP="$RUNNER_TEMP"
+          ENV_FILE="$GITHUB_ENV"
+          # Normalize runner paths to POSIX form for consistent use in Git Bash.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            REFERENCE_TEMP="$(cygpath -u "$RUNNER_TEMP")"
+            ENV_FILE="$(cygpath -u "$GITHUB_ENV")"
+            ORIGINAL_PYTHON="$REFERENCE_TEMP/neural-original/Scripts/python.exe"
+          else
+            ORIGINAL_PYTHON="$REFERENCE_TEMP/neural-original/bin/python"
+          fi
+          python -m venv "$REFERENCE_TEMP/neural-original"
+          echo "ORIGINAL_PYTHON=$ORIGINAL_PYTHON" >> "$ENV_FILE"
+          echo "REFERENCE_TEMP=$REFERENCE_TEMP" >> "$ENV_FILE"
+          "$ORIGINAL_PYTHON" -m pip install numpy==2.5.3 scipy==1.18.1 pandas==2.3.3 mne==1.13.2 matplotlib==3.11.2 pyedflib==0.1.42
+          "$ORIGINAL_PYTHON" -m pip install "git+https://github.com/BrianMur92/NEURAL_py_EEG_feature_set.git@78c94258e4a3e6504e469f418443c78926e1a6be"
+          "$ORIGINAL_PYTHON" -m pip list
+
+      # Source hashes gate generation. Stage only modern references after it
+      # succeeds; reference_windows.json must retain its 2020 SciPy values.
+      - name: Make the reference values on this runner with the original NEURAL
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -r tests/data "$REFERENCE_TEMP/committed-references"
+          "$ORIGINAL_PYTHON" -B tests/make_reference.py main edge inputs --output "$REFERENCE_TEMP/runner-references"
+          for name in reference_clean.json reference_artefacts.json reference_edge_cases.json reference_input_types.json; do
+            cp "$REFERENCE_TEMP/runner-references/$name" "tests/data/$name"
+          done
+
       - name: Run the tests
         run: python -m pytest
+
+      # A shared helper or environment change can affect both runs equally.
+      # This independent check still gates the job, even when pytest fails.
+      - name: Check drift from the committed reference values
+        if: ${{ always() && env.REFERENCE_TEMP != '' }}
+        shell: bash
+        run: python tests/check_reference_drift.py "$REFERENCE_TEMP/committed-references" "$REFERENCE_TEMP/runner-references"

@@ -425,10 +425,42 @@ agree to about 1e-15.
 **Automatic tests on GitHub.** `.github/workflows/tests.yml` runs the tests on
 every push and pull request, on Windows and Ubuntu, with Python 3.14 and with
 pandas 2.3.3 and the latest pandas 3.x; the other libraries are fixed to the
-versions the reference values were made with. The Windows steps were checked
-on a Windows PC. The Ubuntu jobs have not run yet: the reference values were
-made on Windows, and Linux maths libraries may round some last digits
-differently, which the strict tolerance would report.
+versions the reference values were made with. Each job first runs the original
+code (commit 78c9425, pandas 2.3.3) in an isolated environment to regenerate the
+main, edge-case and input-type references on that runner. The tests compare
+the fork with those values at the unchanged tolerance (relative 1e-9, absolute
+1e-12). The window references (`reference_windows.json`) stay committed: they
+need the 2020 environment and are still tested.
+
+The first GitHub run failed on all four jobs: the reported amplitude_skew and
+rEEG differences from the committed Windows-PC references reached about 1e-8
+relative, while preprocessed EEG differed by about 1e-14. The reported feature
+drift is a lower bound: each failed comparison stopped later comparisons, so
+some per-epoch arrays were never checked. For example, the clean amplitude
+group recorded 708 values on GitHub, versus 1,992 in the complete local run.
+Differences in the runner environment can affect the last digits that NEURAL's
+0.5 Hz high-pass filter amplifies; the exact cause of that run's differences has
+not been determined.
+
+A separate simulation added 1-4 ULP (units in the last place) of noise to the
+preprocessed EEG and reran the real feature pipeline. Relative changes in
+median-channel values were about 2e-9 to 9e-9, while per-epoch amplitude_skew
+and rEEG_asymmetry reached about 4e-7. These are sensitivity estimates, not
+measurements from a hosted runner.
+
+A separate check, `tests/check_reference_drift.py`, also gates the job. Once the
+workflow has recorded `REFERENCE_TEMP`, it runs even if pytest fails. It prints
+the largest committed-versus-runner drift and fails above
+`1e-12 + 1e-5 * abs(committed)`. The relative limit is about 25 times the
+simulated 4e-7 estimate; the absolute floor stays at 1e-12
+because a larger allowance near zero has not been established. Structures,
+checksums, NaN positions, text, booleans and integers must match exactly. Only
+the recorded OS and Python version may differ without failing, and those
+changes are printed. This catches larger changes that affect the original and
+fork equally, including shared-helper bugs. Shared changes smaller than roughly
+1e-5 relative can escape the guard, and the absolute floor matters near zero.
+The guard may flag new environments for investigation; it does not establish
+the cause of drift or guarantee every environment passes.
 
 **Known limitations inherited from the original** (unchanged in this fork; the
 same with pandas 2.3.3 and pandas 3)

@@ -35,6 +35,15 @@ identical to release 0.1.3 (commit 78c9425); the tests in `tests/` check this.
   code (78c9425), on deterministic synthetic inputs, including NaN, +/-inf, EDF export, other
   kinds of row index, read-only arrays and the window types above.
 - GitHub Actions workflow (`.github/workflows/tests.yml`), `requirements-dev.txt`, `.gitignore`.
+- Same-machine GitHub Actions comparison against the original code in an isolated
+  environment, retaining the strict tolerance and committed 2020 window references.
+- Independent committed-versus-runner reference drift guard: fails above relative
+  1e-5 plus absolute 1e-12, or on structural/discrete changes; logs OS/Python changes.
+  The relative limit is about 25 times a simulated 4e-7 sensitivity estimate; the
+  first hosted run's reported 1e-8 drift was a lower bound because comparisons stopped
+  at their first failure. Shared changes below roughly 1e-5 relative can escape.
+  Differences in the runner environment can affect rounding; the exact cause of the
+  first hosted run's differences has not been determined.
 
 ## [0.1.3] - 25-08-2022
 ### Changed 

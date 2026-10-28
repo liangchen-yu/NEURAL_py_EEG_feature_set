@@ -34,6 +34,11 @@ original NEURAL (plotting off: set MPLBACKEND=Agg):
 -B: do not write __pycache__ folders. Add --output <folder> to write the
 files elsewhere (e.g. to check they come out byte-identical). Running it
 again in the same environment gives byte-identical files.
+
+GitHub Actions runs "main edge inputs" with the original code on each runner.
+The tests then compare the fork with those same-machine values, while a
+separate drift guard checks them against the committed references. The
+"windows" references remain the committed values from the 2020 environment.
 """
 import contextlib
 import glob
