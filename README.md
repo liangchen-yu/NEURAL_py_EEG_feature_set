@@ -1,6 +1,6 @@
 [![tests](../../actions/workflows/tests.yml/badge.svg)](../../actions/workflows/tests.yml)
 
-> **About this fork:** NEURAL_py by Brian M. Murphy and John M. O'Toole
+> **About this version:** NEURAL_py by Brian M. Murphy and John M. O'Toole
 > (UCC, BSD-3-Clause), forked at commit 78c9425 and updated to work with
 > current Python libraries (pandas 3, SciPy 1.13+, pyedflib 0.1.41+).
 > Regression tests show it gives the same results as the original code.
@@ -25,12 +25,15 @@ available at https://arxiv.org/abs/1704.05694.
 
 ---
 
-[Requirements](#requirements) | [Use](#use) | [Quantitative
+[Requirements](#requirements-original-2020-code) | [Use](#use) | [Quantitative
 features](#quantitative-features) | [Files](#files) | [Test computer
 setup](#test-computer-setup) | [Licence](#licence) | [References](#references) |
 [Contact](#contact)
 
-## Requirements:
+## Requirements (original 2020 code)
+
+This maintained version needs Python 3.14 or newer (only 3.14 is tested) and at least the library versions in `setup.cfg`; see **Install** in [Maintenance](#maintenance).
+
 Python 3.7 or newer with the following packages installed
 | Package       | Version installed  |
 | ------------- |:------------------:|
@@ -43,11 +46,13 @@ Python 3.7 or newer with the following packages installed
 
 ## Use 
 
-Set path `(path_to_NEURAL_py)` to the folder location of NEURAL_py. Then the following will load the main functions:
+Install the package from this folder (see **Install** in [Maintenance](#maintenance)):
 ```
-  import sys
-  sys.path.append(path_to_NEURAL_py)
-  import utils,  preprocessing_EEG, generate_all_features
+  python -m pip install -e .
+```
+Then the following will load the main functions:
+```
+  from NEURAL_py_EEG import utils, preprocessing_EEG, generate_all_features
 ```
 
 As an example, generate simulated EEG and calculate relative spectral power, standard
@@ -66,11 +71,9 @@ deviation of range-EEG, and brain symmetry index:
   print(feat_pd_names)
 ```
 
-See the `demos.py` file for further examples. To run the demo code without previously adding the package:
+See the `demos.py` file (in `src/NEURAL_py_EEG/`) for further examples. To run the demo code after installing the package:
 ```
-  import sys
-  sys.path.append(path_to_NEURAL_py)
-  import demos
+  from NEURAL_py_EEG import demos
 
 
   demos.artefact_removal_examples()
@@ -80,12 +83,12 @@ See the `demos.py` file for further examples. To run the demo code without previ
   demos.load_edf_preprocessing_and_feature_extraction()
 ```
 
+The last demo writes a file `demo_data.edf` in the current folder.
 
 
 
-
-All parameters are set the file
-`utils.NEURAL_parameters`.
+All default parameters are set in the function `NEURAL_parameters()` in the file
+`src/NEURAL_py_EEG/NEURAL_parameters.py`.
 
 
 ## Quantitative features
@@ -132,8 +135,14 @@ in more detail:
 
 FB: features generated for each frequency band (FB)
 
+Note on `connectivity_corr`: the code (and the MATLAB version) computes Pearson correlation;
+see [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md#decisions-needed) (decision pending).
+
 
 ## Files
+This section describes the original 2020 code. The files are now in `src/NEURAL_py_EEG/`
+(since the original's version 0.1.3, 2022); this maintained version added `tests/` and `docs/`.
+
 Some python files (.py files) have a description and an example in the header. To read this
 header, type `help(filename)` in the console after importing (`import filename`).  Directory structure is as follows: 
 ```
@@ -156,6 +165,9 @@ header, type `help(filename)` in the console after importing (`import filename`)
 
 
 ## Test computer setup
+This describes the computer used to test the original 2020 code; for this maintained version
+see **Tested versions** in [Maintenance](#maintenance).
+
 - hardware:  Intel Core i7-8700K @ 3.2GHz; 32GB memory.
 - operating system: Windows 10 64-bit
 - software: python 3.7
@@ -225,7 +237,7 @@ Multi-Feature Approach. Medical Engineering and
 Physics, vol. 45, pp. 42-50, 2017. 
 [DOI:10.1016/j.medengphy.2017.04.003](https://dx.doi.org/10.1016/j.medengphy.2017.04.003)
   
-9. JM O'Toole and GB Geraldine (2019). Quantitative Preterm EEG Analysis: The Need for
+9. JM O'Toole and GB Boylan (2019). Quantitative Preterm EEG Analysis: The Need for
 Caution in Using Modern Data Science Techniques. Frontiers in Pediatrics 7, 174
 [DOI:10.3389/fped.2019.00174](https://doi.org/10.3389/fped.2019.00174)
   
@@ -246,10 +258,12 @@ Ireland
 
 ## Maintenance
 
-This fork keeps NEURAL_py working with current Python libraries. Regression
+This maintained version keeps NEURAL_py working with current Python libraries. Regression
 tests show that it gives the same numbers as the original code (commit
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be)).
 No algorithm or default parameter was changed.
+
+Notes for reviewers (changes, checks, numerical differences, open questions): [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md).
 
 **What "the same" covers.**
 
@@ -294,8 +308,8 @@ run with the same library versions on the same computer:
 
 Not covered: IBI (burst) features, which need a separate burst detector; real
 recordings; parameter settings other than those above; categorical, interval
-or multi-level row indexes; Linux and macOS (only Windows has been tested so
-far).
+or multi-level row indexes; macOS. Windows has been tested locally, and CI
+runs on Windows and Ubuntu.
 
 **What changed and why**
 
@@ -369,7 +383,8 @@ reference values for each group.
   NEURAL's functions directly (`tests/edge_cases.py`).
 - Reference values (`tests/data/`): made by `tests/make_reference.py` with the
   original NEURAL. The script first checks that every NEURAL module is
-  byte-for-byte commit 78c9425 (SHA-256) and refuses to run otherwise. The
+  identical to commit 78c9425 after normalising line endings (SHA-256) and
+  refuses to run otherwise. The
   main and edge-case values come from the original with pandas 2.3.3; the
   window values from the original in its 2020 environment, the only place
   the old window functions still exist. The script's header lists the exact
@@ -379,7 +394,8 @@ reference values for each group.
   library versions; NaN must be NaN in both, and counts, positions and text
   must be equal. With the versions in the "Main" row below, the actual
   differences are 0, except for the comparison with the 2020 environment.
-  The main tests store every value. The edge cases store sampled checks of
+  The main tests store every feature value; the EEG is checked through
+  summaries and sampled values (every 500th sample). The edge cases store sampled checks of
   the EEG (see above) and, for the features, only the summary values (one
   per frequency band).
 - Reproducibility: the EDF inputs are byte-identical on any computer. The
@@ -409,9 +425,9 @@ scipy 1.3.1, pandas 0.25.1, mne 0.18.2, matplotlib 3.1.1, and pyEDFlib 0.1.15
 (0.1.14 has no Python 3.7 build for Windows). The artefact report, the
 removed channels and the NaN placement were identical. Spectral, BSI and
 coherence features agreed to about 1e-14; amplitude, rEEG, connectivity_corr
-and FD features to within 3e-7 relative. These small differences come from
-last-digit changes in SciPy's filter routines, which NEURAL's 0.5 Hz
-Butterworth high-pass filter amplifies.
+and FD features to within 3e-7 relative. These small differences likely come
+from last-digit changes in SciPy's filter routines, amplified by NEURAL's
+0.5 Hz Butterworth high-pass filter.
 
 **Web browser check** (a separate experiment, not included in this
 repository). NEURAL with the same pandas-3 fix also ran in a web browser
@@ -419,8 +435,8 @@ repository). NEURAL with the same pandas-3 fix also ran in a web browser
 mne 1.13.2, matplotlib 3.10.8; pyedflib cannot be installed there, and NEURAL
 only needs it for EDF export). All 26 non-IBI features ran; largest absolute
 difference vs native 3.7e-8 (relative about 2e-8; up to 2e-6 for values near
-zero), due to floating-point rounding in recursive filters. Spectral features
-agree to about 1e-15.
+zero), likely due to floating-point rounding in recursive filters. Spectral
+features agree to about 1e-15.
 
 **Automatic tests on GitHub.** `.github/workflows/tests.yml` runs the tests on
 every push and pull request, on Windows and Ubuntu, with Python 3.14 and with
@@ -428,18 +444,19 @@ pandas 2.3.3 and the latest pandas 3.x; the other libraries are fixed to the
 versions the reference values were made with. Each job first runs the original
 code (commit 78c9425, pandas 2.3.3) in an isolated environment to regenerate the
 main, edge-case and input-type references on that runner. The tests compare
-the fork with those values at the unchanged tolerance (relative 1e-9, absolute
+this maintained version with those values at the unchanged tolerance (relative 1e-9, absolute
 1e-12). The window references (`reference_windows.json`) stay committed: they
 need the 2020 environment and are still tested.
 
-The first GitHub run failed on all four jobs: the reported amplitude_skew and
-rEEG differences from the committed Windows-PC references reached about 1e-8
-relative, while preprocessed EEG differed by about 1e-14. The reported feature
-drift is a lower bound: each failed comparison stopped later comparisons, so
-some per-epoch arrays were never checked. For example, the clean amplitude
-group recorded 708 values on GitHub, versus 1,992 in the complete local run.
-Differences in the runner environment can affect the last digits that NEURAL's
-0.5 Hz high-pass filter amplifies; the exact cause of that run's differences has
+The dd7235e drift-guard step reported maximum runner-versus-PC differences of
+1.6e-7 relative on the Windows runner and 3.2e-7 on the Ubuntu runner. The first
+GitHub run failed on all four jobs and reported about 1e-8 relative for
+amplitude_skew and rEEG, while preprocessed EEG differed by about 1e-14. That
+earlier feature figure was a lower bound: each failed comparison stopped later
+comparisons, so some per-epoch arrays were never checked. For example, the clean
+amplitude group recorded 708 values on GitHub, versus 1,992 in the complete local run.
+Differences in the runner environment likely affect last digits amplified by
+NEURAL's 0.5 Hz high-pass filter; the exact cause of that run's differences has
 not been determined.
 
 A separate simulation added 1-4 ULP (units in the last place) of noise to the
@@ -457,13 +474,13 @@ because a larger allowance near zero has not been established. Structures,
 checksums, NaN positions, text, booleans and integers must match exactly. Only
 the recorded OS and Python version may differ without failing, and those
 changes are printed. This catches larger changes that affect the original and
-fork equally, including shared-helper bugs. Shared changes smaller than roughly
+this maintained version equally, including shared-helper bugs. Shared changes smaller than roughly
 1e-5 relative can escape the guard, and the absolute floor matters near zero.
 The guard may flag new environments for investigation; it does not establish
 the cause of drift or guarantee every environment passes.
 
-**Known limitations inherited from the original** (unchanged in this fork; the
-same with pandas 2.3.3 and pandas 3)
+**Known limitations inherited from the original** (unchanged; the same with
+pandas 2.3.3 and pandas 3)
 
 - `generate_all_features(..., channel_names=[...])`: selecting channels fails
   with a `KeyError`, whichever channels are named.
@@ -495,3 +512,11 @@ same with pandas 2.3.3 and pandas 3)
   this one message.
 - `save_pd_as_edf`'s default physical minimum (-5482.288) has 9 characters but
   an EDF header field holds 8, so pyedflib warns and stores -5482.28.
+- Further inherited behaviour is described in
+  [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md#original-behaviour-kept-on-purpose):
+  preprocessing fails at sample rates of 80 Hz or below (unless every channel
+  has already been removed as artefact); some rates, such as 96, 160 and
+  480 Hz, are downsampled to the wrong rate but labelled 64 Hz; if all
+  channels are removed, feature extraction fails with an `IndexError`; MNE
+  upsamples files with mixed sample rates to the highest loaded rate; and two
+  settings (`REMOVE_ART` and `params['FD']['method']`) are never read.
