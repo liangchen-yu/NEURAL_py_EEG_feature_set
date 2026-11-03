@@ -6,18 +6,20 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 - **Same results on one machine:** for everything the 28 tests check with modern libraries, the outputs equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers. Artefact decisions and NaN positions did not change (reported).
-- **Likely cause (to be tested):** the order-5 Butterworth band filters in `(b, a)` form, which can magnify rounding errors.
+- **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
-- **Issues found in the original:** some sample rates (e.g. 96, 160, 480 Hz) are downsampled to the wrong rate but labelled 64 Hz; preprocessing fails at 80 Hz or below (unless every channel has already been removed as artefact); the correlation feature is Pearson but the README says Spearman; two settings are never read.
+- **Python porting gaps:** the integer check gives wrong output rates at 96, 160, 224, 288 and 480 Hz, labelled 64 Hz. `REMOVE_ART` has no effect; MATLAB honours it. Fixes are proposed for pull requests, pending John's decision or review. FD's `method` setting is also unused. Retained-channel preprocessing requires more than 80 Hz.
+- **Referential-check mismatch:** the reported open-HIE analysis found all bipolar channels removed in 11 of 24 recordings at 200 Hz and none of 9 at 256 Hz. The C3/C4-average reference is consistent with the low mean correlations; see below.
+- **Correlation:** the NEURAL paper and both implementations specify Pearson. The README feature table's "Spearman" is a documentation error.
 
 ## Decisions needed
 
 1. **Tolerance:** what difference is acceptable per feature group, for summary and per-epoch values? (Tests use 1e-9 relative; the CI drift guard 1e-5.)
 2. **Reference:** keep this Python version (78c9425) as the reference, or the MATLAB NEURAL? Could MATLAB outputs be shared for the two synthetic test files?
-3. **Filter form:** keep `(b, a)`, which matches both the Python and MATLAB originals, or switch to the more stable second-order sections (SOS), which would change numbers (size to be measured)?
-4. **Correlation:** both versions compute Pearson; the README says Spearman. Keep Pearson and correct the text?
-5. **Downsampling:** fix the wrong output rates (e.g. 96, 160, 480 Hz), or reject such rates?
-6. **Supported data:** require more than 80 Hz? Which sample rates and recording lengths should be supported and tested?
+3. **Filter form:** keep `(b, a)`, which matches both originals, or review SOS as a separate numerical change? The synthetic experiment recorded changes up to 5.7e-7 relative per epoch and 3.4e-9 in summaries. Keep the original references unchanged.
+4. **Downsampling:** match MATLAB's integer check in a pull request, pending John's decision? The Python check gives wrong rates at odd multiples of 32 Hz above 64 Hz.
+5. **Supported data:** require more than 80 Hz? Which sample rates, recording lengths and reference montages should be supported and tested?
+6. **Artefact switch:** honour `REMOVE_ART`, keeping the default of 1 and identical default results, in a pull request pending John's review?
 7. **Other inherited behaviour** (table below): fix or keep each item?
 8. **Versions:** support Python older than 3.14? Which libraries should be pinned exactly, and which given only a minimum?
 9. **IBI features:** keep them unsupported (they need a separate burst detector), or add and test the detector?
@@ -270,11 +272,23 @@ historical ~1e-8 figure explicitly as a first-run lower bound.
 
 The **larger reported differences** occur in band-filtered groups using order-5 Butterworth filters in `(b, a)` form; spectral, BSI and coherence agreed to about 1e-14 in the reported 2020 comparison.
 [SciPy](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.butter.html) recommends **second-order sections (SOS)**, the same intended filter split into short stages: “It is recommended to work with the SOS representation.”
-Rounding sensitivity is a **likely amplifier**, a hypothesis to test by perturbing synthetic EEG and comparing processing stages with both forms, including per-epoch values and medians.
-**Results:** to be added.
+Rounding sensitivity is a **likely cause** of the sensitivity seen in the synthetic experiment. The cause of the actual cross-machine differences remains unverified.
+
+**Results:** the [single-machine synthetic experiment](../experiments/sensitivity/results.md)
+recorded input changes near 1e-15 through preprocessing, then about 7e-10
+relative RMS difference in the 0.5–4 Hz and FD band outputs. Per-epoch feature
+differences reached 3.5e-7 relative; summaries reached 2.5e-9. SOS reduced the
+0.5–4 Hz band difference to about 1.8e-14, roughly 40,000 times smaller.
+The SOS feature differences reached 8e-12 per epoch and 1.3e-13 in summaries.
+These measure the combined feature computation; downstream stages were not
+isolated. No artefact decisions changed in the 40 perturbed part-A runs.
+Switching unperturbed calculations to SOS changed features by up to 5.7e-7
+relative per epoch and 3.4e-9 in summaries. This would be a separate numerical
+change, compared against unchanged original references. The byte-identity
+checks were recorded during the run; their JSON files are not in the repository.
 
 <details>
-<summary>Filter paths, MATLAB citations, planned experiment and coefficient analysis</summary>
+<summary>Filter paths, MATLAB citations, experiment design and coefficient analysis</summary>
 
 The default amplitude, rEEG, FD and `connectivity_corr` calculations use
 `utils.filter_butterworth_withnans`. Each band uses an order-5 low-pass,
@@ -293,7 +307,7 @@ and [uses `filtfilt(b,a,x)`](https://github.com/otoolej/qEEG_feature_set/blob/20
 Keeping this form follows both originals; SOS would change both implementations’
 numerical form. This does not establish equality between MATLAB and Python outputs.
 
-**Planned test on one machine:**
+**Single-machine experiment design:**
 
 1. Perturb synthetic input EEG by about 1e-15 relative, a few units in the last
    place (ULP: the spacing between nearby representable numbers).
@@ -305,7 +319,9 @@ numerical form. This does not establish equality between MATLAB and Python outpu
 4. If SOS reduces the differences by orders of magnitude, that supports the
    hypothesis. Otherwise, examine the other stages.
 
-This experiment has not been run for these notes.
+The run and its checks are recorded in
+[results.md](../experiments/sensitivity/results.md). This is synthetic evidence
+for a likely cause, not a cross-machine or MATLAB comparison.
 
 `utils.filter_butterworth_withnans:517–607` designs the filters with
 `scipy.signal.butter` (lines 565 and 567), then applies
@@ -353,8 +369,8 @@ gave different shifts.
 
 SOS represents this filter as one first-order and two second-order sections.
 Their denominator coefficients sum to about 0.0479, 0.00232 and 0.00237,
-rather than 2.635e-7 for the single polynomial. These observations support
-testing SOS; they do not quantify its effect on the final EEG features.
+rather than 2.635e-7 for the single polynomial. These coefficient observations
+do not quantify feature errors; the experiment above measures feature differences.
 
 **Other observations consistent with the hypothesis:**
 
@@ -380,12 +396,12 @@ testing SOS; they do not quantify its effect on the final EEG features.
 | Infinity replacement | Only +inf replaced at the final step; earlier filters can fail. |
 | Channel selection | Nonempty selections raise `KeyError`. |
 | Binary-input warning | Reversed check; warnings-as-errors can stop execution. |
-| All channels removed | Feature extraction raises `IndexError`. |
+| All channels removed | Feature extraction raises `IndexError`; the reported open-HIE removals are explained below. |
 | Mixed sample rates | MNE upsamples to one loaded rate; original channel rates unchecked. |
-| Downsampling | Some actual rates differ from the declared 64 Hz. |
+| Downsampling | Python's integer check accepts ratios ending in .5; wrong output rates are labelled 64 Hz. |
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
-| Correlation | Pearson on squared envelopes; README says Spearman. |
-| Unused settings | `REMOVE_ART` and FD’s `method` have no effect. |
+| Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman is a documentation error. |
+| Settings | `REMOVE_ART` is a porting gap: MATLAB honours it, Python does not. FD's `method` is also unused. |
 
 <details>
 <summary>Code locations, inherited effects and probe results</summary>
@@ -403,21 +419,28 @@ does not establish that every rate is supported; the resampling issues remain.
 | Only +inf is converted to NaN at the final replacement step | `preprocessing_EEG.remove_artefacts:426` | The line does not replace −inf. Earlier filter calls fail on infinities unless an earlier flat-zero check has already replaced them. The tests reach this otherwise blocked step with a stand-in. See the qualified infinity limitation in README. | Fix or keep? |
 | Nonempty `channel_names=[...]` selection fails with `KeyError` | `generate_all_features:163–173`, error at 172 | Probe: matching, missing and all channel names fail. Select DataFrame columns before calling the function instead. | Fix or keep? |
 | `len_cont_zeros` warns “Must be a binary signal” when input is binary | `utils.len_cont_zeros:697` | Probe confirms the reversed check. It emits `DeprecationWarning`, normally hidden by Python; tests suppress this message. It does not change numerical outputs, but warning-as-error settings can stop the call. | Fix or keep? |
-| All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The result is an error rather than NaN feature values. | Fix or keep? |
+| All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The reported open-HIE analysis found the low-correlation check removed all bipolar channels in 11/24 recordings at 200 Hz and 0/9 at 256 Hz. See the reference-montage explanation under Artefact detection. | Review the referential check and define the empty-output behaviour. |
 | One loaded sample rate is used for the file | `load_edf_EEG_file:59–60`; `main_preprocessing:532` takes `ch_fs[0]` | `ch_fs` repeats MNE’s `info["sfreq"]`. MNE [documents upsampling mixed-rate signals to the highest loaded rate](https://mne.tools/stable/generated/mne.io.read_raw_edf.html). This code does not check each EEG channel’s original rate. | Fix or keep? |
-| The slicing branch can return the wrong rate while declaring 64 Hz | `preprocessing_EEG.signal_downsample:483–519` | If Fs/64 has at most one decimal place, it keeps every round(Fs/64)-th sample. Otherwise it uses `resample_poly`, with ratio `round(N * 64 / Fs) / N`. See the probe table below. | Fix resampling or reject affected rates? |
+| The slicing branch can return the wrong rate while declaring 64 Hz | `preprocessing_EEG.signal_downsample:483–519`; MATLAB `resample_savemat.m:140` | Python's `isint` uses `x == round(x, 1)`; MATLAB uses `x == round(x)`. Ratios ending in .5 enter the integer branch and its rounded slice step gives the wrong rate. | Proposed: match MATLAB's integer check in a pull request, pending John's decision. |
 | Default retained-channel preprocessing requires Fs > 80 Hz | `art_per_channel:159` uses a fixed 40 Hz upper cutoff | Probes at 40, 60, 64 and 80 Hz fail with an invalid Butterworth critical frequency; 81 Hz completes. If every channel is removed first, that filter is skipped: a 64 Hz probe returned all-NaN data. Feature bands reaching 30 Hz separately need Fs > 60 Hz. Intended post-downsampling rate is 64 Hz. | Define and test supported rates? |
 
 In the full pipeline, downsampling follows the 30 Hz low-pass.
-For ten-second synthetic inputs, both the original and this maintained version gave:
+For ten-second inputs, the code gives:
 
 | Input rate | Output samples | Actual output rate | Declared rate |
 |---|---|---|---|
 | 96 Hz | 480 | 48 Hz | 64 Hz |
 | 160 Hz | 800 | 80 Hz | 64 Hz |
+| 224 Hz | 560 | 56 Hz | 64 Hz |
+| 288 Hz | 720 | 72 Hz | 64 Hz |
 | 480 Hz | 600 | 60 Hz | 64 Hz |
 | 200 Hz | 640 | 64 Hz | 64 Hz |
 | 256 Hz | 640 | 64 Hz | 64 Hz |
+
+The affected integer input rates are odd multiples of 32 Hz above 64 Hz.
+For example, a 5 Hz sine at 96 Hz input appears at 6.67 Hz when the output is
+labelled 64 Hz. The proposed fix is to match MATLAB's integer check in a pull
+request, pending John's decision.
 
 Direct downsampling at 32 Hz raises `ValueError` because the slice step is
 zero. Integer ratios at 128, 256, 512, 1024 and 2048 Hz select every k-th
@@ -428,24 +451,47 @@ count is rounded, so the ratio is not always exactly 64/Fs.
 </details>
 
 <details>
-<summary>Documentation mismatch and unused settings</summary>
+<summary>Documentation mismatch and settings</summary>
 
 | Behaviour | Where | Effect | Decision |
 |---|---|---|---|
-| Code uses Pearson; README says “correlation (Spearman)” | `connectivity_features.connectivity_corr:523–526`; README “Quantitative features” | `stats.pearsonr` is applied to squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The function docstring also says Pearson. | Preserve Pearson and correct description, or change statistic? |
-| `REMOVE_ART` (“0 to turn off”) is never read | `NEURAL_parameters.py:42`; `main_preprocessing` | Setting it to 0 has no effect; preprocessing always calls `remove_artefacts`. | Implement or remove/document setting? |
+| Pearson is specified; the README table says Spearman | `connectivity_features.connectivity_corr:523–526`; NEURAL paper, section 4, eq. 21 and Table B.3 | Both Python and MATLAB use Pearson on squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The README table's Spearman is a documentation error. | Correct the description; no statistic decision is needed. |
+| `REMOVE_ART` is a porting gap | `NEURAL_parameters.py:42`; Python `main_preprocessing`; MATLAB `resample_savemat.m:120–122` | The paper's section 3 documents `REMOVE_ART=0` to disable removal. MATLAB honours `if(REMOVE_ART)`; Python always calls `remove_artefacts`, so the switch has no effect. | Proposed: honour it with default 1 and identical default results, in a pull request pending John's review. |
 | `params['FD']['method']` (“either 'higuchi' or 'katz'”) is never read | `fd_features.main_fd:135–136` | Through `generate_all_features`, “FD” always maps to Higuchi. | Implement or remove/document setting? |
 
 [MATLAB also uses Pearson](https://github.com/otoolej/qEEG_feature_set/blob/206a89b8943f029a32947b1715f75b62ab8d5c8a/connectivity_features/connectivity_features.m#L338-L341).
-Keeping Pearson would preserve the statistic and correct its description;
-Spearman would deliberately change it.
+The [NEURAL paper](https://arxiv.org/abs/1704.05694), section 4, eq. 21 and
+Table B.3, specifies Pearson. The README's Spearman description is a
+documentation error.
 
 </details>
 
 ## Artefact detection
 
 The **low-correlation check** removes bipolar channels containing electrodes whose absolute mean Pearson correlation with other loaded electrodes is below 0.15, using the whole loaded recording.
-**Reported, not re-verified:** several one-hour, 200 Hz public neonatal recordings lost most or all bipolar channels; the reason is uninvestigated [citation to be added].
+
+JM O'Toole and GB Boylan (2017),
+[NEURAL: quantitative features for newborn EEG using Matlab](https://arxiv.org/abs/1704.05694),
+arXiv:1704.05694, section 3, describes the first referential low-correlation
+check as targeting improper electrode placement. It describes the 1500 µV
+high-amplitude threshold as suitable for preterm infants (<32 weeks).
+Figure 1 illustrates the intended setting: most referential channels are
+highly correlated (r > 0.8). The removal cutoff remains 0.15.
+
+**Reported open-HIE analysis, not rerun here:** the analysis covered 24
+recordings at 200 Hz and 9 at 256 Hz. The low-correlation check removed every
+bipolar channel in 11 of the 200 Hz recordings and none of the 256 Hz ones.
+Typically 5 electrodes were flagged at 200 Hz, versus 0 at 256 Hz.
+In the 200 Hz recordings, `C3 + C4` was close to zero. The reported standard
+deviation ratio was 0.015–0.37, versus 1.35–3.22 at 256 Hz. This is consistent
+with the C3/C4-average reference described in the
+[dataset paper](https://doi.org/10.1038/s41597-023-02002-8).
+With little common signal in the referential channels, their mean correlations
+can fall below 0.15. This explains the reported all-channel removals.
+A common reference cancels in bipolar differences. The bipolar signals and
+their features do not depend on it when the same channels and samples are
+retained; the referential removal check does depend on it.
+
 **Settings** are read inside preprocessing functions, with no per-run parameter argument.
 Direct feature wrappers accept parameters, but `generate_all_features` does not forward them.
 
@@ -461,8 +507,9 @@ are a possible follow-up, subject to review.
 1. **Referential low-correlation check** (299–344), detailed below.
 2. **Electrode coupling** (350–396), when more than 4 bipolar channels remain
    and each hemisphere has at least 2. A channel with mean power in 0.5–20 Hz
-   below one-quarter of its hemisphere’s median is removed. Only the first
-   qualifying channel is removed.
+   below one-quarter of its hemisphere's median is removed. Every channel
+   below the cutoff is removed: `ch_labels[ishort][0]` selects the whole row
+   of the two-dimensional index array.
 3. **Per-channel checks**, `art_per_channel:117–245`: exact zeros, high
    amplitude, constant values and sudden jumps.
 4. **Shared removal** (430): a sample marked in any remaining channel becomes
@@ -473,7 +520,7 @@ values used for preterm infants (<32 weeks of gestation)”.
 
 | Parameter | Default | Meaning as implemented | Read in |
 |---|---|---|---|
-| `REMOVE_ART` | 1 | Described as “0 to turn off”; never read | — |
+| `REMOVE_ART` | 1 | Paper and MATLAB allow 0 to turn removal off; Python never reads it (porting gap) | — |
 | `ART_ELEC_CHECK` | 1 s | Removes exact-zero runs at least this long, plus 1 sample on each side | `art_per_channel:143` |
 | `ART_HIGH_VOLT` | 1500 µV | Threshold on the absolute Hilbert envelope of the 0.1–40 Hz filtered channel | `art_per_channel:169` |
 | `ART_TIME_COLLAR` | 10 s | Removes this interval on each side of a high-amplitude sample | `art_per_channel:164` |
@@ -539,13 +586,13 @@ inside the wrappers unless those wrappers are called directly with `params`.
 **Not covered:**
 
 - IBI/burst features.
-- Real recordings.
+- Feature comparisons on real recordings; aggregate open-HIE removal results are reported above.
 - macOS.
 - Non-default settings, except the three tested window types.
 
-**Planned / proposed:**
+**Completed / proposed:**
 
-- Planned: the filter sensitivity experiment.
+- Completed: the single-machine synthetic filter sensitivity experiment; see its recorded results above.
 - Proposed: a lock file in CI and per-run artefact settings.
 - Proposed: a comparison on public real recordings.
 - Proposed: feature-code readability improvements after review.

@@ -136,7 +136,7 @@ in more detail:
 FB: features generated for each frequency band (FB)
 
 Note on `connectivity_corr`: the code (and the MATLAB version) computes Pearson correlation;
-see [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md#decisions-needed) (decision pending).
+the NEURAL paper specifies Pearson ([arXiv:1704.05694](https://arxiv.org/abs/1704.05694), Table B.3).
 
 
 ## Files

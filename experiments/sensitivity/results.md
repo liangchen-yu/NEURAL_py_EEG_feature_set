@@ -7,27 +7,28 @@ tables, checks and figure are written by `run_sensitivity.py`.
 
 ## Summary
 
-- **The difference grows in the Butterworth band filters, and nowhere else.**
+- **The largest increase occurs in the Butterworth feature band filters.**
   A 1–4 ULP change of the input (about 5e-16) stays at about 1e-15 through the
   bipolar montage, artefact removal, the 30 Hz low-pass and downsampling. The
   (b, a) band filters then raise it to about 7e-10 in the 0.5–4 Hz band and in
   the FD band (0.5–30 Hz), both of which contain a 0.5 Hz high-pass; to about
   4e-12 in the 13–30 Hz band, whose 30 Hz low-pass is close to the 32 Hz
   Nyquist frequency; and to less than 1e-13 in the other two bands (RMS
-  measure, Table A1). Spectral, BSI and coherence features, which use no
-  Butterworth filter, changed by at most 2e-14. No artefact decision changed
-  in the 40 perturbed runs.
-- **It is the filters' own rounding, not a magnified input change.** For a
-  1–4 ULP input change the 0.5 Hz high-pass gives an output change 1.6
-  million times larger (1.5 million times what exact arithmetic would give).
-  But this factor is not fixed: the 0.5–4 Hz band filter's output change stays
-  at 7e-10 whether the input changes by 1e-15 or by 1e-10, because any change
-  in the last digits changes the rounding inside the filter. Its size is
-  predicted within a factor of 4, for every order-5 filter, by 2.2e-16 times
-  the largest gain of the filter's feedback part (1/A). A 1-ULP change of the
-  (b, a) coefficients, which could differ between library versions or
-  machines, has an effect of the same size or larger (1.5e-9). This supports
-  the hypothesis, with that refinement.
+  measure, Table A1). Spectral, BSI and coherence features, which do not
+  directly use these band filters, changed by at most 2e-14. No artefact
+  decision changed in the 40 perturbed whole-pipeline runs in part A.
+- **The results are consistent with a rounding-dominated regime.** For a
+  1–4 ULP input change the tested 0.5 Hz high-pass gives an output change
+  1.6 million times larger than the input change, and 1.5 million times the
+  float64 SOS linear-response estimate. For these synthetic inputs and tested
+  perturbations, the 0.5–4 Hz band's output change stays near 7e-10 over input
+  changes from 1e-15 to 1e-10. This supports filter rounding as a likely cause,
+  but does not by itself identify the cause of the cross-machine differences.
+  An empirical indicator, 2.2e-16 times the largest gain of the feedback part
+  (1/A), is within about 4x for the clean-recording order-5 medians; the
+  artefact-recording 13–30 Hz median differs by about 5x. It is not a bound.
+  A 1-ULP change of the (b, a) coefficients has an effect of the same size or
+  larger (1.5e-9). This does not show that machines used different coefficients.
 - **In the features,** per-epoch values changed by up to 3.5e-7 relative where
   they are close to zero (`amplitude_skew` at a value of 0.0012, about 4e-10
   absolute; `rEEG_asymmetry` up to 1.3e-7), and summaries by at most 2.5e-9.
@@ -36,16 +37,20 @@ tables, checks and figure are written by `run_sensitivity.py`.
   about 0.0012 (about 4e-10 absolute).
 - **Second-order sections remove almost all of it.** With SOS the 0.5–4 Hz
   band filter's difference falls from 7e-10 to 1.8e-14 (about 40,000 times
-  smaller), and the features' to at most 8e-12 per epoch and 1.3e-13 in the
-  summaries, which also supports the hypothesis. SOS does not help the
-  order-2 0.1 Hz high-pass of the high-amplitude artefact check, which is one
-  section in either form.
+  smaller), and the features' relative differences to at most 8e-12 per epoch
+  and 1.3e-13 in the summaries. This describes the combined feature computation
+  only; individual downstream stages were not isolated. SOS gives little
+  benefit for the tested order-2 0.1 Hz high-pass of the high-amplitude
+  artefact check, which is one section in either form.
 - **Switching to SOS would change results by the same order as the (b, a)
   form's own sensitivity.** Without any perturbation, the 0.5–4 Hz band output changes
-  by 1.3e-9 and the features by up to 5.7e-7 per epoch and 3.4e-9 in the
+  by 1.3e-9 and the features by up to 5.7e-7 relative per epoch and 3.4e-9 in the
   summaries; spectral, BSI and coherence features and all artefact decisions
-  stay exactly the same. This exceeds the regression tests' tolerance (1e-9
-  relative), so their reference values would have to be regenerated.
+  stay exactly the same. Switching to SOS would be a separately reviewable
+  numerical change, compared against the unchanged original references using
+  both absolute and relative tolerances.
+- **Recorded checks:** the repeat-run and original-code byte-identity results
+  were recorded during the run. The JSON files are not in the repository.
 
 ## Question and approach
 
@@ -632,29 +637,32 @@ Table D2. What switching to SOS changes, without any perturbation: unperturbed S
 - **What was perturbed.** A changed the referential EEG, B the input of each
   filter, C the filter coefficients. Rounding differences that arise inside
   other computations, such as the 4001-tap FIR low-pass (reported at about
-  1e-14 between environments), were not reproduced. Table B2 shows that below
-  about 1e-10 the size of an input change makes no difference to the (b, a)
-  filter outputs, so such differences are expected to give the same results;
-  this was not tested directly.
+  1e-14 between environments), were not reproduced. For these synthetic inputs
+  and tested perturbations, Table B2 shows an approximately constant 0.5–4 Hz
+  band output difference from input changes of 1e-15 to 1e-10. This is
+  consistent with a rounding-dominated regime. It does not by itself identify
+  the cause of the cross-machine differences.
 - **Stages not isolated.** The Hilbert transform, skewness, kurtosis,
   percentiles, Higuchi's method and the medians were measured only together
   with the band filter before them. With SOS filters the whole feature
-  computation changed by at most 8e-12 per epoch, which bounds what these
-  stages add for inputs changed this way; their sensitivity to larger input
-  changes was not measured.
-- **Exact zeros were not perturbed:** moving 0 by one ULP gives a subnormal
-  number that no rounding of a real computation produces, and the synthetic
-  flat-signal artefacts consist of exact zeros.
+  computation changed by at most 8e-12 relative per epoch. This describes the
+  combined feature computation only; individual downstream stages were not
+  isolated. Their sensitivity to larger input changes was not measured.
+- **Exact zeros** were left unchanged to preserve the synthetic flat-signal
+  artefacts.
 - **Default settings and one recording rate only** (256 Hz; features at
   64 Hz). At other recording rates the artefact-check filters have other
   coefficients; at 500 Hz, for example, the 0.5 Hz high-pass has its poles
   even closer to 1, so its rounding error is expected to be larger (not
   tested). IBI features were not covered.
-- **The exact response** in Table B1 leaves out inputs that contain NaN, which
-  includes every epoch of the recording with artefacts.
-- **The rule of thumb** in Table B1 is an order-of-magnitude estimate. It is
-  within a factor of 4 for the order-5 filters, but 30 times too large for the
-  order-2 0.1 Hz high-pass.
+- **Float64 SOS linear-response estimate** (filtering the input difference on
+  NaN-free inputs); not an exact-arithmetic reference. Table B1 labels this
+  "Exact response". It leaves out inputs containing NaN, including every epoch
+  of the recording with artefacts.
+- **The rule of thumb** in Table B1 is an empirical indicator, not a bound. It
+  is within about 4x for the clean-recording order-5 medians; the
+  artefact-recording 13–30 Hz median differs by about 5x. It is about 30 times
+  too large for the tested order-2 0.1 Hz high-pass.
 - **SOS was compared with (b, a), not with MATLAB NEURAL.** MATLAB NEURAL also
   designs (b, a) filters, so after a switch the two implementations would no
   longer use the same filter form.
