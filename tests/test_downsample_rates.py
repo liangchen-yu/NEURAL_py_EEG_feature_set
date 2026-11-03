@@ -5,10 +5,12 @@ whole number and uses scipy.signal.resample_poly otherwise. The rate test makes
 10 s of a 5 Hz sine, downsamples it and checks the declared rate, the number
 of samples and that the sine is still at 5 Hz when read at 64 Hz.
 
-The other tests check that resample_poly uses the exact ratio 64/Fs, as MATLAB
-resample(x, Fs_new, Fs) does: lengths that are not a whole number of seconds,
-whole-second lengths (unchanged from the old length-based ratio) and all-NaN
-channels.
+The other tests check that resample_poly uses the ratio Fs_new/Fs, as MATLAB
+resample(x, Fs_new, Fs) does (exact for whole-number rates, approximated with
+denominator <= 10000 otherwise): lengths that are not a whole number of seconds,
+whole-second lengths (unchanged from the old length-based ratio), all-NaN
+channels and a non-integer target rate. The last test documents the inherited
+growth of NaN gaps during resampling.
 """
 import numpy as np
 import pandas as pd
@@ -76,3 +78,38 @@ def test_all_nan_channel_odd_length():
 
     assert len(out["C4"]) == len(out["C3"])
     assert np.isnan(out["C4"]).all()
+
+
+def test_non_integer_target_rate():
+    """A non-integer target rate (64.5 Hz) is not truncated."""
+    Fs, Fs_new, N = 200, 64.5, 2001
+    rng = np.random.default_rng(3)
+    data = pd.DataFrame({"C3": rng.standard_normal(N)})
+
+    out, Fs_out = preprocessing_EEG.signal_downsample(data, Fs, Fs_new)
+
+    assert Fs_out == Fs_new
+    assert len(out["C3"]) == int(np.ceil(N * Fs_new / Fs))
+
+
+def test_nan_gap_grows_slightly():
+    """Inherited behaviour: a NaN gap stays NaN and grows slightly, because of resample_poly's filter.
+
+    Samples more than 1 s away from the gap are not NaN.
+    """
+    Fs = 200
+    t = np.arange(SECONDS * Fs) / Fs
+    x = np.sin(2 * np.pi * SINE_HZ * t)
+    gap_start, gap_end = 4.5, 5.0  # 0.5 s gap
+    x[(t >= gap_start) & (t < gap_end)] = np.nan
+    data = pd.DataFrame({"C3": x})
+
+    out, _ = preprocessing_EEG.signal_downsample(data, Fs, FS_NEW)
+
+    y = out["C3"].to_numpy()
+    t_out = np.arange(len(y)) / FS_NEW
+    in_gap = (t_out >= gap_start) & (t_out < gap_end)
+    far = (t_out < gap_start - 1) | (t_out >= gap_end + 1)
+    assert np.isnan(y[in_gap]).all()
+    assert np.isnan(y).sum() > in_gap.sum()
+    assert not np.isnan(y[far]).any()

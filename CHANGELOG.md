@@ -44,11 +44,13 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
   with removal off, the artefact report is `None`. The default (1) keeps results identical.
   `tests/test_remove_art_switch.py` covers this.
 - `preprocessing_EEG.signal_downsample`: at non-integer rate ratios (e.g. 200, 250, 500 Hz),
-  `resample_poly` now uses the exact ratio 64/Fs, as MATLAB `resample(x, Fs_new, Fs)` in
-  `resample_savemat.m`. Before, the ratio depended on the recording length, so a recording that is
-  not a whole number of seconds came out at a slightly wrong rate labelled 64 Hz (e.g. 1001 samples
-  at 200 Hz gave 63.936 Hz). Whole-second recordings give identical results.
-  `tests/test_downsample_rates.py` covers odd and whole-second lengths and all-NaN channels.
+  `resample_poly` now uses the ratio Fs_new/Fs, as MATLAB `resample(x, Fs_new, Fs)` in
+  `resample_savemat.m`: exact when both rates are whole numbers, otherwise approximated by a
+  fraction with denominator <= 10000. Before, the ratio depended on the recording length, so a
+  recording that is not a whole number of seconds came out at a slightly wrong rate labelled 64 Hz
+  (e.g. 1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at whole-number rates give
+  identical results. `tests/test_downsample_rates.py` covers odd and whole-second lengths, all-NaN
+  channels, a 64.5 Hz target rate and the inherited growth of NaN gaps.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original

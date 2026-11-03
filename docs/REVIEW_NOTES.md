@@ -4,7 +4,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## In short
 
-- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 52 tests, including 20 sample-rate tests and 4 `REMOVE_ART` tests.
+- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 54 tests, including 21 sample-rate tests, 1 NaN-gap test and 4 `REMOVE_ART` tests.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers. Artefact decisions and NaN positions did not change (reported).
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
@@ -120,7 +120,7 @@ ignores it. Connectivity uses `nanmedian` over epochs (lines 321,327).
 
 - **Inputs:** two synthetic EDFs, “clean” and “artefacts”, each 300 s, 256 Hz and 9 electrodes; all 26 non-IBI features under tested settings; no real recordings opened.
 - **References:** the original source was SHA-256 verified; outputs include feature values and sampled EEG checks.
-- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 52 tests, including 20 sample-rate tests and 4 `REMOVE_ART` tests.
+- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 54 tests, including 21 sample-rate tests, 1 NaN-gap test and 4 `REMOVE_ART` tests.
 - **CI:** Windows and Ubuntu compare this maintained version and the original on the same runner, then guard drift from committed references, also requiring matching structures, NaN positions and discrete outputs.
 
 <details>
@@ -407,6 +407,7 @@ do not quantify feature errors; the experiment above measures feature difference
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
 | Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman was a documentation error and is now corrected to Pearson. |
 | Settings | FD's `method` is unused. |
+| NaN gaps in resampling | At non-integer rate ratios, NaN gaps grow slightly during resampling (`resample_poly`'s filter), as in the original: a 0.5 s gap at 200 Hz becomes about 0.83 s at 64 Hz. |
 
 **Fixed: downsampling.** The original's integer check in `signal_downsample`
 used `x == round(x, 1)`; MATLAB `resample_savemat.m:140` uses `x == round(x)`.
@@ -470,10 +471,12 @@ sample correctly. Rates such as 200, 250, 500 and 1000 Hz use
 length (the target sample count was rounded), so when the length was not a
 whole number of seconds the ratio was not exactly 64/Fs: for example, 1001
 samples at 200 Hz gave 63.936 Hz, labelled 64 Hz. This maintained version now
-uses the exact ratio 64/Fs, as MATLAB `resample(x, Fs_new, Fs)` does in
-`resample_savemat.m:152`. Whole-second recordings give identical results; only
-recordings that are not a whole number of seconds change.
-`tests/test_downsample_rates.py` checks both cases.
+uses the ratio Fs_new/Fs, as MATLAB `resample(x, Fs_new, Fs)` does in
+`resample_savemat.m:152`; the ratio is exact when both rates are whole numbers
+and approximated by a fraction with denominator <= 10000 otherwise. Whole-second
+recordings at whole-number rates give identical results; only recordings that
+are not a whole number of seconds change. `tests/test_downsample_rates.py`
+checks both cases and a 64.5 Hz target rate.
 
 </details>
 
