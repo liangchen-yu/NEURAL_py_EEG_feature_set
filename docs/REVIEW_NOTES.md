@@ -425,7 +425,7 @@ does not establish that every rate is supported; the resampling issues remain.
 | Default retained-channel preprocessing requires Fs > 80 Hz | `art_per_channel:159` uses a fixed 40 Hz upper cutoff | Probes at 40, 60, 64 and 80 Hz fail with an invalid Butterworth critical frequency; 81 Hz completes. If every channel is removed first, that filter is skipped: a 64 Hz probe returned all-NaN data. Feature bands reaching 30 Hz separately need Fs > 60 Hz. Intended post-downsampling rate is 64 Hz. | Define and test supported rates? |
 
 In the full pipeline, downsampling follows the 30 Hz low-pass.
-For ten-second inputs, the code gives:
+For ten-second inputs, both the original and this maintained version give:
 
 | Input rate | Output samples | Actual output rate | Declared rate |
 |---|---|---|---|
@@ -478,7 +478,7 @@ high-amplitude threshold as suitable for preterm infants (<32 weeks).
 Figure 1 illustrates the intended setting: most referential channels are
 highly correlated (r > 0.8). The removal cutoff remains 0.15.
 
-**Reported open-HIE analysis, not rerun here:** the analysis covered 24
+**Reported open-HIE analysis, not rerun here** (a local script approximating the first check only; the electrode-coupling check was not included): the analysis covered 24
 recordings at 200 Hz and 9 at 256 Hz. The low-correlation check removed every
 bipolar channel in 11 of the 200 Hz recordings and none of the 256 Hz ones.
 Typically 5 electrodes were flagged at 200 Hz, versus 0 at 256 Hz.
@@ -487,7 +487,7 @@ deviation ratio was 0.015–0.37, versus 1.35–3.22 at 256 Hz. This is consiste
 with the C3/C4-average reference described in the
 [dataset paper](https://doi.org/10.1038/s41597-023-02002-8).
 With little common signal in the referential channels, their mean correlations
-can fall below 0.15. This explains the reported all-channel removals.
+can fall below 0.15. This accounts for the reported all-channel removals.
 A common reference cancels in bipolar differences. The bipolar signals and
 their features do not depend on it when the same channels and samples are
 retained; the referential removal check does depend on it.
