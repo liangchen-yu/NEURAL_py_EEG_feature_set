@@ -90,6 +90,11 @@ The last demo writes a file `demo_data.edf` in the current folder.
 All default parameters are set in the function `NEURAL_parameters()` in the file
 `src/NEURAL_py_EEG/NEURAL_parameters.py`.
 
+Artefact removal follows `REMOVE_ART` (default 1, on), as in MATLAB NEURAL;
+`preprocessing_EEG.main_preprocessing(file, remove_art=False)` turns it off for
+one run. Warning: this skips every artefact check, so use it only for data
+already checked for artefacts.
+
 
 ## Quantitative features
 
@@ -260,7 +265,9 @@ Ireland
 This maintained version keeps NEURAL_py working with current Python libraries. Regression
 tests show that it gives the same numbers as the original code (commit
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be)).
-No algorithm or default parameter was changed.
+No algorithm or default parameter was changed. Results differ from the original only at the rates
+changed by the downsampling fix, or with artefact removal turned off (`REMOVE_ART = 0` or
+`remove_art=False`).
 
 Notes for reviewers (changes, checks, numerical differences, open questions): [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md).
 
@@ -365,7 +372,7 @@ this needs the Microsoft C++ Build Tools, on Linux a C compiler.
 
     python -m pytest
 
-This takes about 45 seconds. pytest first shows which NEURAL and library
+This takes about 50 seconds. pytest first shows which NEURAL and library
 versions it uses (and stops if it would test any copy of NEURAL other than
 this folder's `src/`); at the end it prints the largest difference from the
 reference values for each group.
@@ -516,7 +523,7 @@ pandas 2.3.3 and pandas 3)
   preprocessing fails at sample rates of 80 Hz or below (unless every channel
   has already been removed as artefact); if all
   channels are removed, feature extraction fails with an `IndexError`; MNE
-  upsamples files with mixed sample rates to the highest loaded rate; and two
-  settings (`REMOVE_ART` and `params['FD']['method']`) are never read.
+  upsamples files with mixed sample rates to the highest loaded rate; and one
+  setting, `params['FD']['method']`, is never read.
   (The original also downsampled some rates, such as 96, 160 and 480 Hz, to
   the wrong rate while labelling them 64 Hz; this is fixed to match MATLAB.)

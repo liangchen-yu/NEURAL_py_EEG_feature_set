@@ -519,27 +519,46 @@ def signal_downsample(pd_data, Fs, Fs_new):
     return pd_data_downsample, Fs_new
 
 
-def main_preprocessing(file, save_converted=None, save=0, Fs_new=64):
+def main_preprocessing(file, save_converted=None, save=0, Fs_new=64, remove_art=None):
     """
     This function is used to  a) read in EEG from .edf files
-                              b) remove artefacts
+                              b) remove artefacts (can be turned off, see remove_art)
                               c) band-pass filter
                               d) downsample
                               e) save as .csv file
 
+    remove_art: turns artefact removal (step b) on or off.
+        None (default): use REMOVE_ART in NEURAL_parameters.py (default 1, on),
+        as MATLAB NEURAL does (preprocessing/resample_savemat.m).
+        True: call remove_artefacts, as before.
+        False: skip remove_artefacts. The bipolar montage goes on to the filter
+        unchanged, and the returned amount_removed is None.
+
+    Warning: turning artefact removal off skips all six artefact checks
+    (referential low correlation, electrode coupling, and the per-channel
+    checks for zeros, high amplitude, constant values and sudden jumps).
+    Use it only for data already checked for artefacts.
     """
     data, ch_fs = load_edf_EEG_file(file)
     Fs = ch_fs[0]  # Assuming all EEG channels
 
     montage_data, dum = utils.set_bi_montage(data, Fs)
 
-    clean_data, amount_removed = remove_artefacts(
-        montage_data.copy(),
-        np.array(list(montage_data.columns)),
-        Fs,
-        data,
-        np.array(list(data.columns)),
-    )
+    if remove_art is None:
+        remove_art = NEURAL_parameters.NEURAL_parameters()["REMOVE_ART"]
+
+    # as in MATLAB NEURAL, preprocessing/resample_savemat.m: if(REMOVE_ART) ... end
+    if remove_art:
+        clean_data, amount_removed = remove_artefacts(
+            montage_data.copy(),
+            np.array(list(montage_data.columns)),
+            Fs,
+            data,
+            np.array(list(data.columns)),
+        )
+    else:
+        clean_data = montage_data
+        amount_removed = None
 
     filtered_data = LPF_zero_phase(clean_data.copy(), Fs)
 

@@ -4,11 +4,11 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## In short
 
-- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 39 tests, including 11 sample-rate tests.
+- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 43 tests, including 11 sample-rate tests and 4 `REMOVE_ART` tests.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers. Artefact decisions and NaN positions did not change (reported).
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
-- **Python porting gaps:** the downsampling integer check was wrong for odd multiples of 32 Hz above 64 Hz (96, 160, 224, 288 and 480 Hz gave wrong output rates, labelled 64 Hz). It is now fixed to match MATLAB. This changes results only at those rates, which were wrong; results at all other rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` has no effect; MATLAB honours it. A fix is proposed for a pull request, pending John's review. FD's `method` setting is also unused. Retained-channel preprocessing requires more than 80 Hz.
+- **Python porting gaps:** the downsampling integer check was wrong for odd multiples of 32 Hz above 64 Hz (96, 160, 224, 288 and 480 Hz gave wrong output rates, labelled 64 Hz). It is now fixed to match MATLAB. This changes results only at those rates, which were wrong; results at all other rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` is now honoured, as in MATLAB; the default of 1 keeps results unchanged. FD's `method` setting is unused. Retained-channel preprocessing requires more than 80 Hz.
 - **Referential-check mismatch:** the reported open-HIE analysis found all bipolar channels removed in 11 of 24 recordings at 200 Hz and none of 9 at 256 Hz. The C3/C4-average reference is consistent with the low mean correlations; see below.
 - **Correlation:** the NEURAL paper and both implementations specify Pearson. The README feature table's "Spearman" was a documentation error and is now corrected to Pearson.
 
@@ -19,7 +19,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 3. **Filter form:** keep `(b, a)`, which matches both originals, or review SOS as a separate numerical change? The synthetic experiment recorded changes up to 5.7e-7 relative per epoch and 3.4e-9 in summaries. Keep the original references unchanged.
 4. **Downsampling:** the integer check now matches MATLAB; confirm.
 5. **Supported data:** require more than 80 Hz? Which sample rates, recording lengths and reference montages should be supported and tested?
-6. **Artefact switch:** honour `REMOVE_ART`, keeping the default of 1 and identical default results, in a pull request pending John's review?
+6. **Artefact switch:** `REMOVE_ART` is now honoured, as in MATLAB; the default of 1 keeps results identical; confirm. Open question for John: for recordings referenced to the C3/C4 average, should all artefact removal be turned off, or only the low-correlation check skipped?
 7. **Other inherited behaviour** (table below): fix or keep each item?
 8. **Versions:** support Python older than 3.14? Which libraries should be pinned exactly, and which given only a minimum?
 9. **IBI features:** keep them unsupported (they need a separate burst detector), or add and test the detector?
@@ -30,6 +30,7 @@ Across **16 commits**, only **four modules** in `src/` changed for pandas 3, Sci
 **Feature formulas**, filter designs and default parameters are unchanged.
 The changes adapt array writes, indexing, window-function imports and EDF export; exact agreement on tested inputs does not guarantee every possible call.
 Besides these compatibility changes, one bug fix changes behaviour: the downsampling integer check (only odd multiples of 32 Hz above 64 Hz are affected).
+One more behaviour change is the `REMOVE_ART` switch, now read by `main_preprocessing`; the default is unchanged.
 
 <details>
 <summary>Source changes, feature map and review context</summary>
@@ -119,7 +120,7 @@ ignores it. Connectivity uses `nanmedian` over epochs (lines 321,327).
 
 - **Inputs:** two synthetic EDFs, “clean” and “artefacts”, each 300 s, 256 Hz and 9 electrodes; all 26 non-IBI features under tested settings; no real recordings opened.
 - **References:** the original source was SHA-256 verified; outputs include feature values and sampled EEG checks.
-- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 39 tests, including 11 sample-rate tests.
+- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 43 tests, including 11 sample-rate tests and 4 `REMOVE_ART` tests.
 - **CI:** Windows and Ubuntu compare this maintained version and the original on the same runner, then guard drift from committed references, also requiring matching structures, NaN positions and discrete outputs.
 
 <details>
@@ -405,7 +406,7 @@ do not quantify feature errors; the experiment above measures feature difference
 | Mixed sample rates | MNE upsamples to one loaded rate; original channel rates unchecked. |
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
 | Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman was a documentation error and is now corrected to Pearson. |
-| Settings | `REMOVE_ART` is a porting gap: MATLAB honours it, Python does not. FD's `method` is also unused. |
+| Settings | FD's `method` is unused. |
 
 **Fixed: downsampling.** The original's integer check in `signal_downsample`
 used `x == round(x, 1)`; MATLAB `resample_savemat.m:140` uses `x == round(x)`.
@@ -414,6 +415,15 @@ gave wrong output rates labelled 64 Hz. For example, a 5 Hz sine at 96 Hz input
 appeared at 6.67 Hz. This maintained version now uses `round(x)`, as MATLAB
 does. Only odd multiples of 32 Hz above 64 Hz are affected;
 `tests/test_downsample_rates.py` checks 11 rates.
+
+**Fixed: artefact switch.** MATLAB `resample_savemat.m:120–122` calls
+`remove_artefacts` only inside `if(REMOVE_ART) ... end`. The NEURAL paper,
+section 3, documents `REMOVE_ART=0` to turn removal off. The original Python
+always called `remove_artefacts`, so the setting had no effect.
+`main_preprocessing` now reads `REMOVE_ART`; its new `remove_art` argument
+overrides it for one run. With removal off, no artefact check runs and the
+artefact report is `None`. The default of 1 keeps results identical.
+`tests/test_remove_art_switch.py` checks both settings.
 
 <details>
 <summary>Code locations, inherited effects and probe results</summary>
@@ -467,7 +477,6 @@ count is rounded, so the ratio is not always exactly 64/Fs.
 | Behaviour | Where | Effect | Decision |
 |---|---|---|---|
 | Pearson is specified; the README table said Spearman | `connectivity_features.connectivity_corr:523–526`; NEURAL paper, section 4, eq. 21 and Table B.3 | Both Python and MATLAB use Pearson on squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The README table's Spearman was a documentation error and is now corrected to Pearson. | Corrected; no statistic decision is needed. |
-| `REMOVE_ART` is a porting gap | `NEURAL_parameters.py:42`; Python `main_preprocessing`; MATLAB `resample_savemat.m:120–122` | The paper's section 3 documents `REMOVE_ART=0` to disable removal. MATLAB honours `if(REMOVE_ART)`; Python always calls `remove_artefacts`, so the switch has no effect. | Proposed: honour it with default 1 and identical default results, in a pull request pending John's review. |
 | `params['FD']['method']` (“either 'higuchi' or 'katz'”) is never read | `fd_features.main_fd:135–136` | Through `generate_all_features`, “FD” always maps to Higuchi. | Implement or remove/document setting? |
 
 [MATLAB also uses Pearson](https://github.com/otoolej/qEEG_feature_set/blob/206a89b8943f029a32947b1715f75b62ab8d5c8a/connectivity_features/connectivity_features.m#L338-L341).
@@ -503,15 +512,16 @@ A common reference cancels in bipolar differences. The bipolar signals and
 their features do not depend on it when the same channels and samples are
 retained; the referential removal check does depend on it.
 
-**Settings** are read inside preprocessing functions, with no per-run parameter argument.
+**Settings** are read inside preprocessing functions. The one per-run argument is `remove_art`: `main_preprocessing` now accepts it, to override `REMOVE_ART`.
 Direct feature wrappers accept parameters, but `generate_all_features` does not forward them.
 
 <details>
 <summary>Artefact stages and exact default parameters</summary>
 
-`main_preprocessing` loads the EDF, builds the bipolar montage and calls
-`remove_artefacts`. Optional preprocessing arguments preserving the defaults
-are a possible follow-up, subject to review.
+`main_preprocessing` loads the EDF, builds the bipolar montage and, if
+`REMOVE_ART` is on (the default), calls `remove_artefacts`. Optional
+preprocessing arguments preserving the defaults are a possible follow-up,
+subject to review.
 
 `preprocessing_EEG.remove_artefacts:248–438` runs:
 
@@ -531,7 +541,7 @@ values used for preterm infants (<32 weeks of gestation)”.
 
 | Parameter | Default | Meaning as implemented | Read in |
 |---|---|---|---|
-| `REMOVE_ART` | 1 | Paper and MATLAB allow 0 to turn removal off; Python never reads it (porting gap) | — |
+| `REMOVE_ART` | 1 | 0 turns artefact removal off, as in the paper and MATLAB; the `remove_art` argument overrides it | `main_preprocessing` |
 | `ART_ELEC_CHECK` | 1 s | Removes exact-zero runs at least this long, plus 1 sample on each side | `art_per_channel:143` |
 | `ART_HIGH_VOLT` | 1500 µV | Threshold on the absolute Hilbert envelope of the 0.1–40 Hz filtered channel | `art_per_channel:169` |
 | `ART_TIME_COLLAR` | 10 s | Removes this interval on each side of a high-amplitude sample | `art_per_channel:164` |
@@ -574,6 +584,7 @@ but the implementation does not limit how many electrodes it flags.
 
 | Function | Call line(s) | Artefact settings read |
 |---|---|---|
+| `preprocessing_EEG.main_preprocessing` | new; only when `remove_art` is None | `REMOVE_ART` |
 | `preprocessing_EEG.art_per_channel` | 130 | `ART_ELEC_CHECK`, `ART_TIME_COLLAR`, `ART_HIGH_VOLT`, `ART_DIFF_TIME_COLLAR`, `ART_DIFF_MIN_TIME`, `ART_DIFF_VOLT` |
 | `preprocessing_EEG.remove_artefacts` | 294 | `ART_REF_LOW_CORR` |
 | `amplitude_features.main_amplitude` | 113,119 | `FILTER_REPLACE_ARTEFACTS` |
@@ -581,8 +592,9 @@ but the implementation does not limit how many electrodes it flags.
 | `fd_features.main_fd` | 139,145 | `FILTER_REPLACE_ARTEFACTS` |
 | `connectivity_features.main_connectivity` | 719,725 | `FILTER_REPLACE_ARTEFACTS`, passed to `connectivity_corr` |
 
-Neither `main_preprocessing`, `remove_artefacts` nor `art_per_channel`
-accepts an artefact-parameter argument. The feature wrappers accept `params`,
+`main_preprocessing` accepts one artefact argument, `remove_art`. Neither
+`remove_artefacts` nor `art_per_channel` accepts an artefact-parameter
+argument. The feature wrappers accept `params`,
 but `generate_all_features:250–260,316` does not supply one.
 
 Other calls are `generate_all_features:38,146`,
@@ -599,11 +611,11 @@ inside the wrappers unless those wrappers are called directly with `params`.
 - IBI/burst features.
 - Feature comparisons on real recordings; aggregate open-HIE removal results are reported above.
 - macOS.
-- Non-default settings, except the three tested window types.
+- Non-default settings, except the three tested window types and `REMOVE_ART = 0`, which is now tested.
 
 **Completed / proposed:**
 
 - Completed: the single-machine synthetic filter sensitivity experiment; see its recorded results above.
-- Proposed: a lock file in CI and per-run artefact settings.
+- Proposed: a lock file in CI. One per-run artefact setting now exists (`remove_art`); others remain proposed.
 - Proposed: a comparison on public real recordings.
 - Proposed: feature-code readability improvements after review.

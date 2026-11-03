@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file. Project fir
 ## Unreleased
 Maintained fork (see README, "Maintenance"). With the same library versions, the results are
 identical to release 0.1.3 (commit 78c9425), except at the rates changed by the downsampling fix
-(odd multiples of 32 Hz above 64 Hz); the tests in `tests/` check this.
+(odd multiples of 32 Hz above 64 Hz) and when artefact removal is turned off (`REMOVE_ART = 0` or
+`remove_art=False`); the tests in `tests/` check this.
 
 ### Changed
 - Dependencies are declared in `setup.cfg`: Python >= 3.14, numpy >= 2.4.6, scipy >= 1.18.0,
@@ -36,6 +37,11 @@ identical to release 0.1.3 (commit 78c9425), except at the rates changed by the 
   change. Calling `signal_downsample` directly at 32 Hz now upsamples to 64 Hz instead of raising
   `ValueError`; `main_preprocessing` is unaffected, because it already fails at 80 Hz or below.
   `tests/test_downsample_rates.py` covers 11 rates.
+- `preprocessing_EEG.main_preprocessing` now reads NEURAL's `REMOVE_ART` setting, as in MATLAB
+  `resample_savemat.m` and the NEURAL paper (section 3): `REMOVE_ART = 0` turns artefact removal
+  off. Before, the setting was never read. The new `remove_art` argument overrides it for one run;
+  with removal off, the artefact report is `None`. The default (1) keeps results identical.
+  `tests/test_remove_art_switch.py` covers this.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original
