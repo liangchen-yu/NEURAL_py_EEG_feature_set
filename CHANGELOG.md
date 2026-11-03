@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file. Project fir
 
 ## Unreleased
 Maintained fork (see README, "Maintenance"). With the same library versions, the results are
-identical to release 0.1.3 (commit 78c9425); the tests in `tests/` check this.
+identical to release 0.1.3 (commit 78c9425), except at the rates changed by the downsampling fix
+(odd multiples of 32 Hz above 64 Hz); the tests in `tests/` check this.
 
 ### Changed
 - Dependencies are declared in `setup.cfg`: Python >= 3.14, numpy >= 2.4.6, scipy >= 1.18.0,
@@ -29,6 +30,12 @@ identical to release 0.1.3 (commit 78c9425); the tests in `tests/` check this.
   `utils.gen_window` now come from `scipy.signal.windows` (same values).
 - Docstrings now say which functions change their input in place and need writable arrays.
 - Invalid escape sequence in a `utils.py` docstring (SyntaxWarning); the text is unchanged.
+- `preprocessing_EEG.signal_downsample`: the integer check uses `round(x)` instead of
+  `round(x, 1)`, as in MATLAB `resample_savemat.m`. Before, odd multiples of 32 Hz above 64 Hz
+  (e.g. 96, 160, 480 Hz) were downsampled to the wrong rate but labelled 64 Hz; only these rates
+  change. Calling `signal_downsample` directly at 32 Hz now upsamples to 64 Hz instead of raising
+  `ValueError`; `main_preprocessing` is unaffected, because it already fails at 80 Hz or below.
+  `tests/test_downsample_rates.py` covers 11 rates.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original

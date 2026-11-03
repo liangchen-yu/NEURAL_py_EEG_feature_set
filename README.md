@@ -116,7 +116,7 @@ in more detail:
 | amplitude\_env\_mean       | envelope: mean value                                                          | yes |
 | amplitude\_env\_SD         | envelope: standard deviation (SD)                                             | yes |
 | connectivity\_BSI          | brain symmetry index (see Van Putten 2007)                                    | yes |
-| connectivity\_corr         | correlation (Spearman) between envelopes of hemisphere-paired channels        | yes |
+| connectivity\_corr         | correlation (Pearson) between envelopes of hemisphere-paired channels         | yes |
 | connectivity\_coh\_mean    | coherence: mean value                                                         | yes |
 | connectivity\_coh\_max     | coherence: maximum value                                                      | yes |
 | connectivity\_coh\_freqmax | coherence: frequency of maximum value                                         | yes |
@@ -135,8 +135,7 @@ in more detail:
 
 FB: features generated for each frequency band (FB)
 
-Note on `connectivity_corr`: the code (and the MATLAB version) computes Pearson correlation;
-the NEURAL paper specifies Pearson ([arXiv:1704.05694](https://arxiv.org/abs/1704.05694), Table B.3).
+The NEURAL paper specifies Pearson correlation for `connectivity_corr` ([arXiv:1704.05694](https://arxiv.org/abs/1704.05694), Table B.3).
 
 
 ## Files
@@ -515,8 +514,9 @@ pandas 2.3.3 and pandas 3)
 - Further inherited behaviour is described in
   [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md#original-behaviour-kept-on-purpose):
   preprocessing fails at sample rates of 80 Hz or below (unless every channel
-  has already been removed as artefact); some rates, such as 96, 160 and
-  480 Hz, are downsampled to the wrong rate but labelled 64 Hz; if all
+  has already been removed as artefact); if all
   channels are removed, feature extraction fails with an `IndexError`; MNE
   upsamples files with mixed sample rates to the highest loaded rate; and two
   settings (`REMOVE_ART` and `params['FD']['method']`) are never read.
+  (The original also downsampled some rates, such as 96, 160 and 480 Hz, to
+  the wrong rate while labelling them 64 Hz; this is fixed to match MATLAB.)

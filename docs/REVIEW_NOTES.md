@@ -4,20 +4,20 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## In short
 
-- **Same results on one machine:** for everything the 28 tests check with modern libraries, the outputs equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15.
+- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 39 tests, including 11 sample-rate tests.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers. Artefact decisions and NaN positions did not change (reported).
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
-- **Python porting gaps:** the integer check gives wrong output rates at 96, 160, 224, 288 and 480 Hz, labelled 64 Hz. `REMOVE_ART` has no effect; MATLAB honours it. Fixes are proposed for pull requests, pending John's decision or review. FD's `method` setting is also unused. Retained-channel preprocessing requires more than 80 Hz.
+- **Python porting gaps:** the downsampling integer check was wrong for odd multiples of 32 Hz above 64 Hz (96, 160, 224, 288 and 480 Hz gave wrong output rates, labelled 64 Hz). It is now fixed to match MATLAB. This changes results only at those rates, which were wrong; results at all other rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` has no effect; MATLAB honours it. A fix is proposed for a pull request, pending John's review. FD's `method` setting is also unused. Retained-channel preprocessing requires more than 80 Hz.
 - **Referential-check mismatch:** the reported open-HIE analysis found all bipolar channels removed in 11 of 24 recordings at 200 Hz and none of 9 at 256 Hz. The C3/C4-average reference is consistent with the low mean correlations; see below.
-- **Correlation:** the NEURAL paper and both implementations specify Pearson. The README feature table's "Spearman" is a documentation error.
+- **Correlation:** the NEURAL paper and both implementations specify Pearson. The README feature table's "Spearman" was a documentation error and is now corrected to Pearson.
 
 ## Decisions needed
 
 1. **Tolerance:** what difference is acceptable per feature group, for summary and per-epoch values? (Tests use 1e-9 relative; the CI drift guard 1e-5.)
 2. **Reference:** keep this Python version (78c9425) as the reference, or the MATLAB NEURAL? Could MATLAB outputs be shared for the two synthetic test files?
 3. **Filter form:** keep `(b, a)`, which matches both originals, or review SOS as a separate numerical change? The synthetic experiment recorded changes up to 5.7e-7 relative per epoch and 3.4e-9 in summaries. Keep the original references unchanged.
-4. **Downsampling:** match MATLAB's integer check in a pull request, pending John's decision? The Python check gives wrong rates at odd multiples of 32 Hz above 64 Hz.
+4. **Downsampling:** the integer check now matches MATLAB; confirm.
 5. **Supported data:** require more than 80 Hz? Which sample rates, recording lengths and reference montages should be supported and tested?
 6. **Artefact switch:** honour `REMOVE_ART`, keeping the default of 1 and identical default results, in a pull request pending John's review?
 7. **Other inherited behaviour** (table below): fix or keep each item?
@@ -29,6 +29,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 Across **16 commits**, only **four modules** in `src/` changed for pandas 3, SciPy and pyedflib compatibility.
 **Feature formulas**, filter designs and default parameters are unchanged.
 The changes adapt array writes, indexing, window-function imports and EDF export; exact agreement on tested inputs does not guarantee every possible call.
+Besides these compatibility changes, one bug fix changes behaviour: the downsampling integer check (only odd multiples of 32 Hz above 64 Hz are affected).
 
 <details>
 <summary>Source changes, feature map and review context</summary>
@@ -118,7 +119,7 @@ ignores it. Connectivity uses `nanmedian` over epochs (lines 321,327).
 
 - **Inputs:** two synthetic EDFs, “clean” and “artefacts”, each 300 s, 256 Hz and 9 electrodes; all 26 non-IBI features under tested settings; no real recordings opened.
 - **References:** the original source was SHA-256 verified; outputs include feature values and sampled EEG checks.
-- **Tests:** relative tolerance 1e-9, absolute 1e-12; 28 passed, with modern-reference differences exactly 0 and a separate 2020 window exception below.
+- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 39 tests, including 11 sample-rate tests.
 - **CI:** Windows and Ubuntu compare this maintained version and the original on the same runner, then guard drift from committed references, also requiring matching structures, NaN positions and discrete outputs.
 
 <details>
@@ -130,6 +131,10 @@ pandas 3.0.2, MNE 1.13.2, matplotlib 3.11.2 and pyedflib 0.1.42.
 ```text
 28 passed in 45.83s
 ```
+
+After the downsampling fix, the same environment gives `39 passed in 42.07s`:
+the 28 regression and edge-case tests still show difference 0, and the 11
+sample-rate tests pass.
 
 Every checked modern-reference group had a largest difference of exactly 0.
 The separate 2020 window comparison had a largest relative difference of
@@ -398,10 +403,17 @@ do not quantify feature errors; the experiment above measures feature difference
 | Binary-input warning | Reversed check; warnings-as-errors can stop execution. |
 | All channels removed | Feature extraction raises `IndexError`; the reported open-HIE removals are explained below. |
 | Mixed sample rates | MNE upsamples to one loaded rate; original channel rates unchecked. |
-| Downsampling | Python's integer check accepts ratios ending in .5; wrong output rates are labelled 64 Hz. |
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
-| Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman is a documentation error. |
+| Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman was a documentation error and is now corrected to Pearson. |
 | Settings | `REMOVE_ART` is a porting gap: MATLAB honours it, Python does not. FD's `method` is also unused. |
+
+**Fixed: downsampling.** The original's integer check in `signal_downsample`
+used `x == round(x, 1)`; MATLAB `resample_savemat.m:140` uses `x == round(x)`.
+Ratios ending in .5 therefore took the slicing branch, and its rounded step
+gave wrong output rates labelled 64 Hz. For example, a 5 Hz sine at 96 Hz input
+appeared at 6.67 Hz. This maintained version now uses `round(x)`, as MATLAB
+does. Only odd multiples of 32 Hz above 64 Hz are affected;
+`tests/test_downsample_rates.py` checks 11 rates.
 
 <details>
 <summary>Code locations, inherited effects and probe results</summary>
@@ -410,7 +422,7 @@ This maintained version retains these issues so it can be compared with the orig
 scientific changes. This is not evidence that the behaviours are desirable.
 Code inspection checked every row. Marked synthetic probes reran with the
 original on pandas 2.3.3 and this maintained version on pandas 3.0.2. Requiring more than 80 Hz
-does not establish that every rate is supported; the resampling issues remain.
+does not establish that every rate is supported; the rounded resampling ratio described below remains.
 
 | Behaviour | Where | Effect and evidence | Decision |
 |---|---|---|---|
@@ -421,11 +433,10 @@ does not establish that every rate is supported; the resampling issues remain.
 | `len_cont_zeros` warns “Must be a binary signal” when input is binary | `utils.len_cont_zeros:697` | Probe confirms the reversed check. It emits `DeprecationWarning`, normally hidden by Python; tests suppress this message. It does not change numerical outputs, but warning-as-error settings can stop the call. | Fix or keep? |
 | All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The reported open-HIE analysis found the low-correlation check removed all bipolar channels in 11/24 recordings at 200 Hz and 0/9 at 256 Hz. See the reference-montage explanation under Artefact detection. | Review the referential check and define the empty-output behaviour. |
 | One loaded sample rate is used for the file | `load_edf_EEG_file:59–60`; `main_preprocessing:532` takes `ch_fs[0]` | `ch_fs` repeats MNE’s `info["sfreq"]`. MNE [documents upsampling mixed-rate signals to the highest loaded rate](https://mne.tools/stable/generated/mne.io.read_raw_edf.html). This code does not check each EEG channel’s original rate. | Fix or keep? |
-| The slicing branch can return the wrong rate while declaring 64 Hz | `preprocessing_EEG.signal_downsample:483–519`; MATLAB `resample_savemat.m:140` | Python's `isint` uses `x == round(x, 1)`; MATLAB uses `x == round(x)`. Ratios ending in .5 enter the integer branch and its rounded slice step gives the wrong rate. | Proposed: match MATLAB's integer check in a pull request, pending John's decision. |
 | Default retained-channel preprocessing requires Fs > 80 Hz | `art_per_channel:159` uses a fixed 40 Hz upper cutoff | Probes at 40, 60, 64 and 80 Hz fail with an invalid Butterworth critical frequency; 81 Hz completes. If every channel is removed first, that filter is skipped: a 64 Hz probe returned all-NaN data. Feature bands reaching 30 Hz separately need Fs > 60 Hz. Intended post-downsampling rate is 64 Hz. | Define and test supported rates? |
 
 In the full pipeline, downsampling follows the 30 Hz low-pass.
-For ten-second inputs, both the original and this maintained version give:
+For ten-second inputs, the original gives:
 
 | Input rate | Output samples | Actual output rate | Declared rate |
 |---|---|---|---|
@@ -437,13 +448,13 @@ For ten-second inputs, both the original and this maintained version give:
 | 200 Hz | 640 | 64 Hz | 64 Hz |
 | 256 Hz | 640 | 64 Hz | 64 Hz |
 
-The affected integer input rates are odd multiples of 32 Hz above 64 Hz.
-For example, a 5 Hz sine at 96 Hz input appears at 6.67 Hz when the output is
-labelled 64 Hz. The proposed fix is to match MATLAB's integer check in a pull
-request, pending John's decision.
+This maintained version now gives 640 samples (64 Hz) for every listed rate.
+In the original, the affected integer input rates are odd multiples of 32 Hz
+above 64 Hz; see the "Fixed" note above.
 
-Direct downsampling at 32 Hz raises `ValueError` because the slice step is
-zero. Integer ratios at 128, 256, 512, 1024 and 2048 Hz select every k-th
+In the original, direct downsampling at 32 Hz raises `ValueError` because the
+slice step is zero; this maintained version now upsamples it to 64 Hz with
+`resample_poly`. Integer ratios at 128, 256, 512, 1024 and 2048 Hz select every k-th
 sample correctly. Rates such as 200, 250, 500 and 1000 Hz use
 `resample_poly` toward 64 Hz; for arbitrary input lengths its target sample
 count is rounded, so the ratio is not always exactly 64/Fs.
@@ -455,14 +466,14 @@ count is rounded, so the ratio is not always exactly 64/Fs.
 
 | Behaviour | Where | Effect | Decision |
 |---|---|---|---|
-| Pearson is specified; the README table says Spearman | `connectivity_features.connectivity_corr:523–526`; NEURAL paper, section 4, eq. 21 and Table B.3 | Both Python and MATLAB use Pearson on squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The README table's Spearman is a documentation error. | Correct the description; no statistic decision is needed. |
+| Pearson is specified; the README table said Spearman | `connectivity_features.connectivity_corr:523–526`; NEURAL paper, section 4, eq. 21 and Table B.3 | Both Python and MATLAB use Pearson on squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The README table's Spearman was a documentation error and is now corrected to Pearson. | Corrected; no statistic decision is needed. |
 | `REMOVE_ART` is a porting gap | `NEURAL_parameters.py:42`; Python `main_preprocessing`; MATLAB `resample_savemat.m:120–122` | The paper's section 3 documents `REMOVE_ART=0` to disable removal. MATLAB honours `if(REMOVE_ART)`; Python always calls `remove_artefacts`, so the switch has no effect. | Proposed: honour it with default 1 and identical default results, in a pull request pending John's review. |
 | `params['FD']['method']` (“either 'higuchi' or 'katz'”) is never read | `fd_features.main_fd:135–136` | Through `generate_all_features`, “FD” always maps to Higuchi. | Implement or remove/document setting? |
 
 [MATLAB also uses Pearson](https://github.com/otoolej/qEEG_feature_set/blob/206a89b8943f029a32947b1715f75b62ab8d5c8a/connectivity_features/connectivity_features.m#L338-L341).
 The [NEURAL paper](https://arxiv.org/abs/1704.05694), section 4, eq. 21 and
-Table B.3, specifies Pearson. The README's Spearman description is a
-documentation error.
+Table B.3, specifies Pearson. The README's Spearman description was a
+documentation error and is now corrected to Pearson.
 
 </details>
 

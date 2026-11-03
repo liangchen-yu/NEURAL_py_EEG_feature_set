@@ -103,7 +103,7 @@ in more detail:
 | amplitude\_env\_mean       | envelope: mean value                                                          | yes |
 | amplitude\_env\_SD         | envelope: standard deviation (SD)                                             | yes |
 | connectivity\_BSI          | brain symmetry index (see Van Putten 2007)                                    | yes |
-| connectivity\_corr         | correlation (Spearman) between envelopes of hemisphere-paired channels        | yes |
+| connectivity\_corr         | correlation (Pearson) between envelopes of hemisphere-paired channels         | yes |
 | connectivity\_coh\_mean    | coherence: mean value                                                         | yes |
 | connectivity\_coh\_max     | coherence: maximum value                                                      | yes |
 | connectivity\_coh\_freqmax | coherence: frequency of maximum value                                         | yes |

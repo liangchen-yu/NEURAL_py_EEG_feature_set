@@ -481,7 +481,7 @@ def signal_downsample(pd_data, Fs, Fs_new):
     cols = list(pd_data.columns)
 
     def isint(x):
-        return x == round(x, 1)
+        return x == round(x)  # as in MATLAB NEURAL, preprocessing/resample_savemat.m
 
     pd_data_downsample = pd.DataFrame()
     loop_index = 0
