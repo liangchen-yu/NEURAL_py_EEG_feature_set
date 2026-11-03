@@ -2,6 +2,9 @@
 # Date started: 30/01/2020
 # Last updated: <25/07/2022 16:40:13 (BrianM)>
 
+from fractions import Fraction
+from math import gcd
+
 import pandas as pd
 from NEURAL_py_EEG import utils
 import numpy as np
@@ -495,9 +498,20 @@ def signal_downsample(pd_data, Fs, Fs_new):
             pd_data_downsample.insert(loop_index, cols[i], eeg_data)
             loop_index += 1
     else:
-        size_resampled = signal.resample_poly(
-            np.ones(len(pd_data)), round(len(pd_data) / (Fs / Fs_new)), len(pd_data)
-        ).size
+        # Resample by the exact ratio Fs_new/Fs, as MATLAB resample(x, Fs_new, Fs) does in
+        # preprocessing/resample_savemat.m. A ratio based on the recording length gives a slightly
+        # wrong rate when the length is not a whole number of seconds (e.g. 1001 samples at 200 Hz
+        # gave 63.936 Hz, labelled 64 Hz). Whole-second recordings give the same result either way.
+        if isint(Fs):
+            up, down = int(Fs_new), int(Fs)
+            g = gcd(up, down)
+            up, down = up // g, down // g
+        else:
+            # Fs is not a whole number: approximate Fs_new/Fs by a fraction with denominator <= 10000
+            ratio = Fraction(Fs_new / Fs).limit_denominator(10000)
+            up, down = ratio.numerator, ratio.denominator
+
+        size_resampled = signal.resample_poly(np.ones(len(pd_data)), up, down).size
 
         for i in range(
             len(cols)
@@ -510,9 +524,7 @@ def signal_downsample(pd_data, Fs, Fs_new):
                 loop_index += 1
                 continue
 
-            down_eeg_data = signal.resample_poly(
-                data, round(len(data) / (Fs / Fs_new)), len(data)
-            )
+            down_eeg_data = signal.resample_poly(data, up, down)
             pd_data_downsample.insert(loop_index, cols[i], down_eeg_data)
             loop_index += 1
 

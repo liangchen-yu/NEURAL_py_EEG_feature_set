@@ -4,7 +4,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## In short
 
-- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 43 tests, including 11 sample-rate tests and 4 `REMOVE_ART` tests.
+- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite now has 52 tests, including 20 sample-rate tests and 4 `REMOVE_ART` tests.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers. Artefact decisions and NaN positions did not change (reported).
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
@@ -120,7 +120,7 @@ ignores it. Connectivity uses `nanmedian` over epochs (lines 321,327).
 
 - **Inputs:** two synthetic EDFs, “clean” and “artefacts”, each 300 s, 256 Hz and 9 electrodes; all 26 non-IBI features under tested settings; no real recordings opened.
 - **References:** the original source was SHA-256 verified; outputs include feature values and sampled EEG checks.
-- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 43 tests, including 11 sample-rate tests and 4 `REMOVE_ART` tests.
+- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite now has 52 tests, including 20 sample-rate tests and 4 `REMOVE_ART` tests.
 - **CI:** Windows and Ubuntu compare this maintained version and the original on the same runner, then guard drift from committed references, also requiring matching structures, NaN positions and discrete outputs.
 
 <details>
@@ -432,7 +432,7 @@ This maintained version retains these issues so it can be compared with the orig
 scientific changes. This is not evidence that the behaviours are desirable.
 Code inspection checked every row. Marked synthetic probes reran with the
 original on pandas 2.3.3 and this maintained version on pandas 3.0.2. Requiring more than 80 Hz
-does not establish that every rate is supported; the rounded resampling ratio described below remains.
+does not establish that every rate is supported. The length-based resampling ratio described below is now fixed.
 
 | Behaviour | Where | Effect and evidence | Decision |
 |---|---|---|---|
@@ -466,8 +466,14 @@ In the original, direct downsampling at 32 Hz raises `ValueError` because the
 slice step is zero; this maintained version now upsamples it to 64 Hz with
 `resample_poly`. Integer ratios at 128, 256, 512, 1024 and 2048 Hz select every k-th
 sample correctly. Rates such as 200, 250, 500 and 1000 Hz use
-`resample_poly` toward 64 Hz; for arbitrary input lengths its target sample
-count is rounded, so the ratio is not always exactly 64/Fs.
+`resample_poly` toward 64 Hz. The original based the ratio on the recording
+length (the target sample count was rounded), so when the length was not a
+whole number of seconds the ratio was not exactly 64/Fs: for example, 1001
+samples at 200 Hz gave 63.936 Hz, labelled 64 Hz. This maintained version now
+uses the exact ratio 64/Fs, as MATLAB `resample(x, Fs_new, Fs)` does in
+`resample_savemat.m:152`. Whole-second recordings give identical results; only
+recordings that are not a whole number of seconds change.
+`tests/test_downsample_rates.py` checks both cases.
 
 </details>
 

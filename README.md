@@ -266,8 +266,9 @@ This maintained version keeps NEURAL_py working with current Python libraries. R
 tests show that it gives the same numbers as the original code (commit
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be)).
 No algorithm or default parameter was changed. Results differ from the original only at the rates
-changed by the downsampling fix, or with artefact removal turned off (`REMOVE_ART = 0` or
-`remove_art=False`).
+changed by the downsampling fix, for recordings that are not a whole number of seconds at
+non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the exact ratio, as in MATLAB), or
+with artefact removal turned off (`REMOVE_ART = 0` or `remove_art=False`).
 
 Notes for reviewers (changes, checks, numerical differences, open questions): [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md).
 

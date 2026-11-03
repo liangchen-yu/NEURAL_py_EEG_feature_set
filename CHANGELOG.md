@@ -5,8 +5,9 @@ All notable changes to this project will be documented in this file. Project fir
 ## Unreleased
 Maintained fork (see README, "Maintenance"). With the same library versions, the results are
 identical to release 0.1.3 (commit 78c9425), except at the rates changed by the downsampling fix
-(odd multiples of 32 Hz above 64 Hz) and when artefact removal is turned off (`REMOVE_ART = 0` or
-`remove_art=False`); the tests in `tests/` check this.
+(odd multiples of 32 Hz above 64 Hz), for recordings that are not a whole number of seconds at
+non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turned off
+(`REMOVE_ART = 0` or `remove_art=False`); the tests in `tests/` check this.
 
 ### Changed
 - Dependencies are declared in `setup.cfg`: Python >= 3.14, numpy >= 2.4.6, scipy >= 1.18.0,
@@ -42,6 +43,12 @@ identical to release 0.1.3 (commit 78c9425), except at the rates changed by the 
   off. Before, the setting was never read. The new `remove_art` argument overrides it for one run;
   with removal off, the artefact report is `None`. The default (1) keeps results identical.
   `tests/test_remove_art_switch.py` covers this.
+- `preprocessing_EEG.signal_downsample`: at non-integer rate ratios (e.g. 200, 250, 500 Hz),
+  `resample_poly` now uses the exact ratio 64/Fs, as MATLAB `resample(x, Fs_new, Fs)` in
+  `resample_savemat.m`. Before, the ratio depended on the recording length, so a recording that is
+  not a whole number of seconds came out at a slightly wrong rate labelled 64 Hz (e.g. 1001 samples
+  at 200 Hz gave 63.936 Hz). Whole-second recordings give identical results.
+  `tests/test_downsample_rates.py` covers odd and whole-second lengths and all-NaN channels.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original
