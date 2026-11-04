@@ -1,0 +1,45 @@
+# Cross-machine check with the exact environment from uv.lock.
+# Builds the locked environment on each runner and prints the regression
+# table against the committed reference values (made on the reference PC).
+# On the reference PC, the same locked environment gives difference 0, so any
+# difference shown here comes from the machine, not from library versions.
+# Informational: a tolerance failure does not fail the workflow.
+name: uv cross-machine check
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uv-drift:
+    name: ${{ matrix.os }}, uv.lock
+    runs-on: ${{ matrix.os }}
+    env:
+      MPLBACKEND: Agg # tests must not open plot windows
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      # Same pinned actions as tests.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        run: python -m pip install uv==0.13.7
+
+      - name: Build the environment exactly from uv.lock
+        run: uv sync --locked
+
+      - name: Show the installed versions
+        run: uv pip list
+
+      # Prints the table of largest differences from the committed references.
+      - name: Run the tests against the committed references
+        continue-on-error: true
+        run: uv run pytest
