@@ -2,6 +2,8 @@
 # Date started: 30/01/2020
 # Last updated: <25/07/2022 16:40:13 (BrianM)>
 
+from fractions import Fraction
+
 import pandas as pd
 from NEURAL_py_EEG import utils
 import numpy as np
@@ -98,6 +100,9 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     x_epochs.fill(np.nan)
     x_epochs_inds = np.zeros([N_epochs, L_epoch])
 
+    # if x is a pandas Series: make x[nf] below pick the same samples as with
+    # pandas < 3 (pandas 3 would raise KeyError for a datetime index)
+    x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
         # zero-pad if outside x
@@ -119,6 +124,10 @@ def art_per_channel(x, Fs, DBverbose):
     :param x: data from a single channel - numpy array
     :param Fs: sampling frequency
     :return: x, data with artefacts set as nan
+
+    Note: x itself is changed too (artefacts are set to NaN in it), so it must
+    be a writable array; remove_artefacts passes a copy of each channel
+    (.to_numpy(copy=True)), as needed from pandas 3 on.
     """
     params = NEURAL_parameters.NEURAL_parameters()
 
@@ -298,9 +307,15 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
     if not data_ref.empty:
         x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
         for ch in range(data_ref.shape[1]):
-            x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                data_ref[channel_names_ref[ch]].to_numpy(), Fs, 20, 0.5, 5
-            )
+            # pandas 3 gives a read-only array, so filter a copy.
+            x_ref = data_ref[channel_names_ref[ch]].to_numpy(copy=True)
+            had_nans = np.isnan(x_ref).any()
+            x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_ref, Fs, 20, 0.5, 5)
+            if had_nans:
+                # The filter fills any NaN in the array it is given. The
+                # original passed pandas' own array (a view in pandas < 3), so
+                # this also filled the NaN in data_ref. Keep that explicitly.
+                data_ref[channel_names_ref[ch]] = x_ref
 
         r = np.corrcoef(x_filt)
         np.fill_diagonal(r, np.nan)
@@ -346,9 +361,14 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
             x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
             for ch in range(N_channels):
-                x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                    data[ch_labels[ichannels[ch]]].to_numpy(), Fs, 20, 0.5, 5
-                )
+                # As in step 0: filter a copy, then keep the original's side
+                # effect. The NaN filled here were also filled in data, so the
+                # per-channel artefact checks below saw the filled values.
+                x_bi = data[ch_labels[ichannels[ch]]].to_numpy(copy=True)
+                had_nans = np.isnan(x_bi).any()
+                x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_bi, Fs, 20, 0.5, 5)
+                if had_nans:
+                    data[ch_labels[ichannels[ch]]] = x_bi
 
             A = []  # to suppress warning
             for n in range(N_channels):
@@ -392,7 +412,7 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
     for n in ichannels:
         data[ch_labels[n]], tmpp = art_per_channel(
-            data[ch_labels[n]].to_numpy(), Fs, DBverbose
+            data[ch_labels[n]].to_numpy(copy=True), Fs, DBverbose
         )
         if ct == 0:
             amount_removed[ct, :] = tmpp
@@ -401,7 +421,11 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         ct += 1
         irem = np.append(irem, np.where(np.isnan(data[ch_labels[n]])))
         if any(np.isinf(data[ch_labels[n]])):
-            data[ch_labels[n]][np.where(data[ch_labels[n]] == np.inf)[0]] = np.nan
+            # The original wrote data[col][idx] = np.nan ("chained assignment"),
+            # which pandas 3 silently ignores. One .loc assignment with a
+            # True/False mask does the same in every pandas version. As
+            # before, only +inf becomes NaN.
+            data.loc[data[ch_labels[n]] == np.inf, ch_labels[n]] = np.nan
 
     # remove artefacts across all channels
 
@@ -459,7 +483,7 @@ def signal_downsample(pd_data, Fs, Fs_new):
     cols = list(pd_data.columns)
 
     def isint(x):
-        return x == round(x, 1)
+        return x == round(x)  # as in MATLAB NEURAL, preprocessing/resample_savemat.m
 
     pd_data_downsample = pd.DataFrame()
     loop_index = 0
@@ -473,9 +497,18 @@ def signal_downsample(pd_data, Fs, Fs_new):
             pd_data_downsample.insert(loop_index, cols[i], eeg_data)
             loop_index += 1
     else:
-        size_resampled = signal.resample_poly(
-            np.ones(len(pd_data)), round(len(pd_data) / (Fs / Fs_new)), len(pd_data)
-        ).size
+        # Resample by the ratio Fs_new/Fs, as MATLAB resample(x, Fs_new, Fs) does in
+        # preprocessing/resample_savemat.m: exact when both rates are whole numbers, otherwise
+        # approximated by a fraction with denominator <= 10000. A ratio based on the recording
+        # length gives a slightly wrong rate when the length is not a whole number of seconds (e.g.
+        # 1001 samples at 200 Hz gave 63.936 Hz, labelled 64 Hz). Whole-second recordings at
+        # whole-number rates give the same result either way.
+        ratio = Fraction(Fs_new) / Fraction(Fs)  # reduced by the greatest common divisor
+        if not (isint(Fs) and isint(Fs_new)):
+            ratio = ratio.limit_denominator(10000)
+        up, down = ratio.numerator, ratio.denominator
+
+        size_resampled = signal.resample_poly(np.ones(len(pd_data)), up, down).size
 
         for i in range(
             len(cols)
@@ -488,36 +521,53 @@ def signal_downsample(pd_data, Fs, Fs_new):
                 loop_index += 1
                 continue
 
-            down_eeg_data = signal.resample_poly(
-                data, round(len(data) / (Fs / Fs_new)), len(data)
-            )
+            down_eeg_data = signal.resample_poly(data, up, down)
             pd_data_downsample.insert(loop_index, cols[i], down_eeg_data)
             loop_index += 1
 
     return pd_data_downsample, Fs_new
 
 
-def main_preprocessing(file, save_converted=None, save=0, Fs_new=64):
+def main_preprocessing(file, save_converted=None, save=0, Fs_new=64, remove_art=None):
     """
     This function is used to  a) read in EEG from .edf files
-                              b) remove artefacts
+                              b) remove artefacts (can be turned off, see remove_art)
                               c) band-pass filter
                               d) downsample
                               e) save as .csv file
 
+    remove_art: turns artefact removal (step b) on or off.
+        None (default): use REMOVE_ART in NEURAL_parameters.py (default 1, on),
+        as MATLAB NEURAL does (preprocessing/resample_savemat.m).
+        True: call remove_artefacts, as before.
+        False: skip remove_artefacts. The bipolar montage goes on to the filter
+        unchanged, and the returned amount_removed is None.
+
+    Warning: turning artefact removal off skips all six artefact checks
+    (referential low correlation, electrode coupling, and the per-channel
+    checks for zeros, high amplitude, constant values and sudden jumps).
+    Use it only for data already checked for artefacts.
     """
     data, ch_fs = load_edf_EEG_file(file)
     Fs = ch_fs[0]  # Assuming all EEG channels
 
     montage_data, dum = utils.set_bi_montage(data, Fs)
 
-    clean_data, amount_removed = remove_artefacts(
-        montage_data.copy(),
-        np.array(list(montage_data.columns)),
-        Fs,
-        data,
-        np.array(list(data.columns)),
-    )
+    if remove_art is None:
+        remove_art = NEURAL_parameters.NEURAL_parameters()["REMOVE_ART"]
+
+    # as in MATLAB NEURAL, preprocessing/resample_savemat.m: if(REMOVE_ART) ... end
+    if remove_art:
+        clean_data, amount_removed = remove_artefacts(
+            montage_data.copy(),
+            np.array(list(montage_data.columns)),
+            Fs,
+            data,
+            np.array(list(data.columns)),
+        )
+    else:
+        clean_data = montage_data
+        amount_removed = None
 
     filtered_data = LPF_zero_phase(clean_data.copy(), Fs)
 

@@ -53,14 +53,16 @@ def get_window(win_length, win_type, Npad=0):
         win = np.ones(win_length)
     elif win_type == "black" or win_type == "blackman":
         win = np.blackman(win_length)
+    # SciPy 1.13 removed tukey, bartlett and blackmanharris from scipy.signal;
+    # the same functions are in scipy.signal.windows (since SciPy 1.1).
     elif win_type == "blackmanharris":
-        win = signal.blackmanharris(win_length)
+        win = signal.windows.blackmanharris(win_length)
     elif win_type == "kaiser":
         win = np.kaiser(win_length, 5)
     elif win_type == "tuke" or win_type == "tukey":
-        win = signal.tukey(win_length)
+        win = signal.windows.tukey(win_length)
     elif win_type == "bart" or win_type == "bartlett":
-        win = signal.bartlett(win_length)
+        win = signal.windows.bartlett(win_length)
     else:
         raise ValueError("Name of window function incorrect. Name: %s" % win_type)
 
@@ -118,6 +120,27 @@ def pad_win(w, Npad):
         w_pad[Npad - n - 1] = w[N - n - 1]
         w_pad[Npad - Nh] = w[Nh] / 2
     return w_pad
+
+
+def index_like_pandas2(x):
+    """
+    Make x[positions] pick the same samples that pandas < 3 picked.
+
+    For a pandas Series, x[[0, 1, 2]] used positions when the index does not
+    hold numbers (for example a datetime or text index) and labels when it
+    does (for example the default 0, 1, 2, ...). pandas 3 always uses labels,
+    which fails for a datetime or text index. This keeps the pandas < 3 rule:
+    for an index without numbers the values are returned as a NumPy array (so
+    [] uses positions); anything else is returned unchanged.
+    """
+    if isinstance(x, pd.Series) and x.index.inferred_type not in (
+        "integer",
+        "mixed-integer",
+        "floating",
+        "complex",
+    ):
+        return x.to_numpy()
+    return x
 
 
 # noinspection SpellCheckingInspection
@@ -232,7 +255,7 @@ def gen_test_EEGdata(dur, Fs, include_bipolar=0, discont_activity=0):
         ttime = np.array(range(len(x)))/Fs
         plt.plot(ttime, x)
         plt.xlabel('time (seconds)')
-        plt.ylabel('$\mu$V')
+        plt.ylabel('$\\mu$V')
         plt.show()
 
     """
@@ -388,6 +411,9 @@ def filter_zerophase(
     Outputs:
         y - filtered signal
 
+    Note: x itself is changed: any NaN in it are set to 0. So x must be a
+    writable array; from pandas 3 on, use e.g. .to_numpy(copy=True).
+
     Example:
         import utils
         import matplotlib.pyplot as plt
@@ -395,7 +421,7 @@ def filter_zerophase(
 
         Fs = 64
         data_st = utils.gen_test_EEGdata(32, Fs, 1)
-        x = data_st['eeg_data'][data_st['ch_labels'][0]].values
+        x = data_st['eeg_data'][data_st['ch_labels'][0]].to_numpy(copy=True)
         LP_fc = 20
         HP_fc = 1
 
@@ -478,7 +504,7 @@ def gen_window(win_type, L):
     elif win_type == "black" or win_type == "blackman":
         w = np.blackman(L)
     elif win_type == "blackmanharris":
-        w = signal.blackmanharris(L)
+        w = signal.windows.blackmanharris(L)  # removed from scipy.signal in SciPy 1.13
     elif win_type == "kaiser":
         w = np.kaiser(L, 5)
     else:
@@ -508,6 +534,11 @@ def filter_butterworth_withnans(
         y - filtered signal
         inans - locations of nans
 
+    Note: with FILTER_REPLACE_ARTEFACTS 'zeros' or 'linear_interp' (the
+    default), the NaN in x itself are filled (remove_artefacts relies on
+    this), so x must be a writable array; from pandas 3 on, use e.g.
+    .to_numpy(copy=True). 'cubic_interp' and 'nans' work on a copy of x.
+
     Example:
         import utils
         import matplotlib.pyplot as plt
@@ -515,7 +546,7 @@ def filter_butterworth_withnans(
 
         Fs = 64
         data_st = utils.gen_test_EEGdata(32, Fs, 1)
-        x = data_st['eeg_data'][data_st['ch_labels'][0]].values
+        x = data_st['eeg_data'][data_st['ch_labels'][0]].to_numpy(copy=True)
         F3db_lowpass = 30
         F3db_highpass = 0.5
 
@@ -581,6 +612,8 @@ def replace_start_ends_NaNs_with_zeros(x):
     ---------------------------------------------------------------------
      replace leading or trailing NaNs with zeros (needed for naninterp)
     ---------------------------------------------------------------------
+    Changes x itself and returns it, so x must be a writable array. After
+    leading NaN, the first non-NaN sample is set to 0 as well.
     """
     N = len(x)
     istart = np.argwhere(~np.isnan(x))[0][0]
@@ -599,6 +632,7 @@ def naninterp(X, method="linear"):
     ---------------------------------------------------------------------
      fill 'gaps' in data (marked by NaN) by interpolating
     ---------------------------------------------------------------------
+    Changes X itself and returns it, so X must be a writable array.
 
     """
     inan = np.argwhere(np.isnan(X))
@@ -755,14 +789,22 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["digital_min"] = f.getDigitalMinimum(loc)
             ch_dict["digital_max"] = f.getDigitalMaximum(loc)
             ch_dict["dimension"] = f.getPhysicalDimension(loc)
-            ch_dict["sample_rate"] = f.getSampleFrequency(loc)
+            # pyedflib 0.1.41+ refuses the old key name "sample_rate"
+            # (same meaning: samples per second).
+            ch_dict["sample_frequency"] = f.getSampleFrequency(loc)
             ch_dict["label"] = ch
             ch_dict["transducer"] = f.getTransducer(loc)
             ch_dict["prefilter"] = f.getPrefilter(loc)
 
             samples_in_file.append(data.shape[0])
-            x = data[ch].to_numpy()
-            x[np.where(np.isnan(x))[0]] = 0
+            # pandas 3 gives a read-only array, so work on a copy. NaN are
+            # written as 0. In the original, pandas < 3 gave a view, so the
+            # caller's DataFrame got the 0s too: keep that explicitly.
+            x = data[ch].to_numpy(copy=True)
+            inans = np.where(np.isnan(x))[0]
+            x[inans] = 0
+            if inans.size != 0:
+                data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
     else:
@@ -774,14 +816,18 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["digital_min"] = -32767
             ch_dict["digital_max"] = 32767
             ch_dict["dimension"] = "uV"
-            ch_dict["sample_rate"] = Fs
+            ch_dict["sample_frequency"] = Fs  # was "sample_rate", see above
             ch_dict["label"] = ch
             ch_dict["transducer"] = ""
             ch_dict["prefilter"] = ""
 
             samples_in_file.append(data.shape[0])
-            x = data[ch].to_numpy()
-            x[np.where(np.isnan(x))[0]] = 0
+            # writable copy; NaN -> 0 here and in the caller's DataFrame (see above)
+            x = data[ch].to_numpy(copy=True)
+            inans = np.where(np.isnan(x))[0]
+            x[inans] = 0
+            if inans.size != 0:
+                data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
 

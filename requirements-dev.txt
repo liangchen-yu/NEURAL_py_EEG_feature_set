@@ -1,0 +1,4 @@
+# Tools for developing and testing NEURAL_py (not needed to use it).
+# Install NEURAL itself first:  pip install -e .
+# then:                         pip install -r requirements-dev.txt
+pytest>=9.1
