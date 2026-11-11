@@ -9,7 +9,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
 - **Python porting gaps:** downsampling now matches MATLAB. Results change at odd multiples of 32 Hz above 64 Hz (e.g. 96, 160 and 480 Hz gave wrong output rates, labelled 64 Hz) and can change for recordings that are not a whole number of seconds at rates that are not multiples of 64 Hz (1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at other whole-number rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` is now honoured; its default of 1 keeps results unchanged. FD's `method` setting is unused; retained-channel preprocessing requires more than 80 Hz.
-- **Referential-check mismatch:** the reported open-HIE analysis found all bipolar channels removed in 11 of 24 recordings at 200 Hz and none of 9 at 256 Hz, consistent with the C3/C4-average reference; see below.
+- **Referential-check mismatch:** in a reported run of all 169 recordings of the public HIE dataset with the original code at default settings, the low-correlation check removed every bipolar channel in 50 of 96 recordings at 200 Hz and none of 73 at 256 Hz. Changing only the reference in software switched these removals on and off (see [Artefact detection](#artefact-detection) and decision 6). MATLAB lets users skip this check alone; in Python that currently fails whenever the electrode-coupling check runs.
 - **Correlation:** the NEURAL paper and both implementations specify Pearson; the README table's "Spearman" was a documentation error, now corrected.
 
 ## Decisions needed
@@ -19,7 +19,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 3. **Filter form:** keep `(b, a)`, which matches both originals, or review SOS as a separate numerical change? The synthetic experiment recorded changes up to 5.7e-7 relative per epoch and 3.4e-9 in summaries. Keep the original references unchanged.
 4. **Downsampling:** the integer check and the resampling ratio now match MATLAB; confirm.
 5. **Supported data:** require more than 80 Hz? Which sample rates, recording lengths and reference montages should be supported and tested?
-6. **Artefact switch:** confirm the original author's intended default and testing strategy. Keeping `REMOVE_ART = 1` applies the artefact checks; `0` skips them and leaves artefacts unremoved. In the synthetic C3/C4-average-reference probe, all eight bipolar channels became all-NaN with removal on and had data with it off. Should feature generation and artefact detection be tested separately? For that reference montage, disable all removal or only the low-correlation check?
+6. **Artefact switch and reference montage:** confirm the original author's intended default and testing strategy. Keeping `REMOVE_ART = 1` applies the artefact checks; `0` skips them and leaves artefacts unremoved. In the synthetic C3/C4-average-reference probe, all eight bipolar channels became all-NaN with removal on and had data with it off. Should feature generation and artefact detection be tested separately? For recordings with a C3/C4-average reference, which handling is intended: (a) `REMOVE_ART = 0`, which skips all six checks; (b) skip only the low-correlation check, as MATLAB allows by calling `remove_artefacts` without referential data (in Python this currently fails whenever the electrode-coupling check runs; see [Skipping only the referential check](#skipping-only-the-referential-check)); or (c) re-reference before the check, for example to one recorded electrode or the average of all electrodes, which keeps the faulty-electrode check but can remove channels of its own? Which settings were used for the published HIE analyses?
 7. **Other inherited behaviour** (table below): fix or keep each item?
 8. **Versions:** support Python older than 3.14? Which libraries should be pinned exactly, and which given only a minimum?
 9. **IBI features:** keep them unsupported (they need a separate burst detector), or add and test the detector?
@@ -38,7 +38,7 @@ Package metadata moved from `setup.cfg` to `pyproject.toml`; `uv.lock` fixes eve
 
 The comparison is against original NEURAL_py (BSD-3-Clause) at
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be).
-Source line numbers refer to f69a3c7, the current master: `src/` is unchanged
+Source line numbers refer to f69a3c7 (later commits change only documentation): `src/` is unchanged
 since 15e9aaa, and modules other than `preprocessing_EEG.py` since dd7235e.
 MATLAB line numbers refer to qEEG_feature_set
 [206a89b](https://github.com/otoolej/qEEG_feature_set/tree/206a89b8943f029a32947b1715f75b62ab8d5c8a).
@@ -476,6 +476,7 @@ do not quantify feature errors; the experiment above measures feature difference
 | Channel selection | Nonempty selections raise `KeyError`. |
 | Binary-input warning | Reversed check; warnings-as-errors can stop execution. |
 | All channels removed | Feature extraction raises `IndexError`; the reported open-HIE removals are explained below. |
+| Skipping the referential check | Passing no referential data skips it, as in MATLAB, but the coupling check, when it runs, then raises `IndexError` (details below). |
 | Mixed sample rates | MNE upsamples to one loaded rate; original channel rates unchecked. |
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
 | Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman was a documentation error and is now corrected to Pearson. |
@@ -524,7 +525,8 @@ does not establish that every rate is supported. The length-based resampling rat
 | Only +inf is converted to NaN at the final replacement step | `preprocessing_EEG.remove_artefacts:428` | The line does not replace −inf. Earlier filter calls fail on infinities unless an earlier flat-zero check has already replaced them. The tests reach this otherwise blocked step with a stand-in. See the qualified infinity limitation in README. | Fix or keep? |
 | Nonempty `channel_names=[...]` selection fails with `KeyError` | `generate_all_features:163–173`, error at 172 | Probe: matching, missing and all channel names fail. Select DataFrame columns before calling the function instead. | Fix or keep? |
 | `len_cont_zeros` warns “Must be a binary signal” when input is binary | `utils.len_cont_zeros:697` | Probe confirms the reversed check. It emits `DeprecationWarning`, normally hidden by Python; tests suppress this message. It does not change numerical outputs, but warning-as-error settings can stop the call. | Fix or keep? |
-| All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The reported open-HIE analysis found the low-correlation check removed all bipolar channels in 11/24 recordings at 200 Hz and 0/9 at 256 Hz. See the reference-montage explanation under Artefact detection. | Review the referential check and define the empty-output behaviour. |
+| All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The reported open-HIE run found the low-correlation check removed all bipolar channels in 50 of 96 recordings at 200 Hz and 0 of 73 at 256 Hz. See the reference-montage explanation under Artefact detection. | Review the referential check and define the empty-output behaviour. |
+| Without referential data, the coupling check fails | `remove_artefacts:307` skips the referential check when `data_ref` is empty, but line 362 sizes `x_filt` from `data_ref.shape`; when the coupling check runs (more than four remaining bipolar channels and at least two in each hemisphere, lines 356–359), the loop fails at line 369 | Probes with this maintained version only (pandas 3.0.5 and 3.1.0; synthetic, 60 s, 256 Hz): with eight bipolar channels, `IndexError: index 0 is out of bounds for axis 0 with size 0` at line 369, while the same input with referential data completes; with five channels, a 3 + 2 hemisphere split failed and a 4 + 1 split completed. MATLAB `remove_artefacts.m` skips the check at line 65 and sizes its array as `zeros(N_channels,N)` at line 111 (206a89b). The default pipeline always passes referential data, so it is unaffected. | Fix if option (b) of decision 6 is chosen? |
 | One loaded sample rate is used for the file | `load_edf_EEG_file:61–62`; `main_preprocessing:552` takes `ch_fs[0]` | `ch_fs` repeats MNE’s `info["sfreq"]`. MNE [documents upsampling mixed-rate signals to the highest loaded rate](https://mne.tools/stable/generated/mne.io.read_raw_edf.html). This code does not check each EEG channel’s original rate. | Fix or keep? |
 | Default retained-channel preprocessing requires Fs > 80 Hz | `art_per_channel:161` uses a fixed 40 Hz upper cutoff | Probes at 40, 60, 64 and 80 Hz fail with an invalid Butterworth critical frequency; 81 Hz completes. If every channel is removed first, that filter is skipped: a 64 Hz probe returned all-NaN data. Feature bands reaching 30 Hz separately need Fs > 60 Hz. Intended post-downsampling rate is 64 Hz. | Define and test supported rates? |
 | `feats_per_epochs` holds only the last per-channel feature of one call | `generate_all_features:235–237` re-creates it for each amplitude, spectral, rEEG or FD feature (filled at 267, returned at 358); connectivity and IBI never set it | Probe: for `['amplitude_SD', 'rEEG_mean', 'connectivity_BSI']` it equals the `rEEG_mean`-only result (8 × 9 × 4); with only connectivity features it is an empty array. Summaries cover every feature. `tests/neural_outputs.compute_features` stores it for the last per-channel feature only. | Fix or keep? |
@@ -595,19 +597,52 @@ high-amplitude threshold as suitable for preterm infants (<32 weeks).
 Figure 1 illustrates the intended setting: most referential channels are
 highly correlated (r > 0.8). The removal cutoff remains 0.15.
 
-**Reported open-HIE analysis, not rerun here** (a local script approximating the first check only; the electrode-coupling check was not included): the analysis covered 24
-recordings at 200 Hz and 9 at 256 Hz. The low-correlation check removed every
-bipolar channel in 11 of the 200 Hz recordings and none of the 256 Hz ones.
-Typically 5 electrodes were flagged at 200 Hz, versus 0 at 256 Hz.
-In the 200 Hz recordings, `C3 + C4` was close to zero. The reported standard
-deviation ratio was 0.015–0.37, versus 1.35–3.22 at 256 Hz. This is consistent
-with the C3/C4-average reference described in the
-[dataset paper](https://doi.org/10.1038/s41597-023-02002-8).
+**Reported open-HIE run, not rerun in this review.** All 169 one-hour
+recordings of the public neonatal HIE dataset
+([Zenodo record](https://doi.org/10.5281/zenodo.7477575), CC BY 4.0;
+[dataset paper](https://doi.org/10.1038/s41597-023-02002-8)) were downloaded
+from Zenodo and processed locally with an application that calls the original
+code (78c9425) at default settings. Only aggregate counts are reported here;
+the recordings themselves are not in this repository. The dataset paper describes the
+256 Hz recordings (NicoletOne) as referenced to FCz and the 200 Hz recordings
+(Neurofax) as referenced to the average of C3 and C4.
+
+| | 200 Hz (96 recordings) | 256 Hz (73 recordings) |
+|---|---|---|
+| Every bipolar channel removed | 50 | 0 |
+| Ran with one or two of the eight bipolar channels | 20 | 0 |
+| Median electrodes flagged by the low-correlation check | 5 | 0 |
+
+No other check or error caused a failure. An earlier approximation on 33 of
+these recordings found the same all-removed 200 Hz recordings, and `C3 + C4`
+close to zero at 200 Hz (standard deviation ratio 0.015–0.37, versus
+1.35–3.22 at 256 Hz).
+
+**Reported reference test.** The low-correlation check alone was rerun on each
+recording with the original code's loader, filter and threshold, after
+changing only the reference in software: subtracting a recorded channel, or the
+average of recorded channels, from every electrode. This is exact in exact
+arithmetic; in floating point the results can differ in the last digits. Its
+as-recorded result matched the full run's all-removed outcome in 169 of 169
+recordings.
+
+| Recordings with every channel removed | As recorded | Converted to C3/C4 average | Converted to Cz |
+|---|---|---|---|
+| 200 Hz (96) | 50 | 50 | 2 |
+| 256 Hz (73) | 0 | 31 | 1 |
+
+Changing only the reference switched the removals on and off. A single
+reference electrode is not neutral: with Cz, 15 recordings kept fewer channels
+than as recorded, and Cz itself becomes a flat channel that the check cannot
+assess (its correlations are NaN, so it is never flagged).
+
 With little common signal in the referential channels, their mean correlations
-can fall below 0.15. This accounts for the reported all-channel removals.
-A common reference cancels in bipolar differences. The bipolar signals and
-their features do not depend on it when the same channels and samples are
-retained; the referential removal check does depend on it.
+can fall below 0.15. A common reference cancels in bipolar differences, so in
+exact arithmetic the bipolar signals and their features do not depend on it when
+the same channels and samples are retained; in floating point, a synthetic Cz
+re-reference changed bipolar samples by at most 3.55e-15, and features can then
+differ slightly through the rounding sensitivity described above. The
+referential removal check does depend on the reference.
 
 **Settings** are read inside preprocessing functions. The one per-run argument is `remove_art`: `main_preprocessing` now accepts it, to override `REMOVE_ART`.
 Direct feature wrappers accept parameters, but `generate_all_features` does not forward them.
@@ -701,6 +736,21 @@ inside the wrappers unless those wrappers are called directly with `params`.
 
 </details>
 
+### Skipping only the referential check
+
+MATLAB `remove_artefacts.m` runs the referential check only when referential
+data are passed (line 65, 206a89b), so `remove_artefacts(data,
+ch_labels, Fs)` skips it and keeps the coupling and per-channel checks. The
+Python function also skips the check when `data_ref` is empty
+(`remove_artefacts:307`), but the coupling check sizes its array from
+`data_ref` (line 362) instead of the number of bipolar channels, as MATLAB does
+(`zeros(N_channels,N)`, line 111). Whenever the coupling check runs (more than
+four remaining bipolar channels and at least two in each hemisphere,
+`remove_artefacts:356–359`), it then fails; otherwise the call completes (see
+the inherited-behaviour table). The
+default pipeline always passes referential data and is unaffected. This is not
+changed in this version; see decision 6.
+
 ## Not covered yet / planned work
 
 **Not covered:**
@@ -717,5 +767,6 @@ inside the wrappers unless those wrappers are called directly with `params`.
 - Completed: one per-run artefact setting (`remove_art`); others remain proposed.
 - Proposed: log the runner's CPU in CI, to test the machine explanation of the Windows drift.
 - Proposed: reference values from three machines ([Run it on your PC](#run-it-on-your-pc)) and, if possible, a MATLAB run on the synthetic files.
-- Proposed: a comparison on public real recordings.
+- Proposed: feature-output comparisons on public real recordings.
+- Proposed: decide how to handle C3/C4-average-reference recordings (decision 6), and fix the coupling-check array size if option (b) is chosen.
 - Proposed: feature-code readability improvements after review.
