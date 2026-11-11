@@ -32,7 +32,7 @@ setup](#test-computer-setup) | [Licence](#licence) | [References](#references) |
 
 ## Requirements (original 2020 code)
 
-This maintained version needs Python 3.14 or newer (only 3.14 is tested) and at least the library versions in `setup.cfg`; see **Install** in [Maintenance](#maintenance).
+This maintained version needs Python 3.14 or newer (only 3.14 is tested) and at least the library versions in `pyproject.toml`; `uv.lock` holds the exact versions of a tested environment. See **Install** in [Maintenance](#maintenance).
 
 Python 3.7 or newer with the following packages installed
 | Package       | Version installed  |
@@ -46,11 +46,11 @@ Python 3.7 or newer with the following packages installed
 
 ## Use 
 
-Install the package from this folder (see **Install** in [Maintenance](#maintenance)):
+Install the package from this folder with [uv](https://docs.astral.sh/uv/) (see **Install** in [Maintenance](#maintenance), also for pip):
 ```
-  python -m pip install -e .
+  uv sync --locked
 ```
-Then the following will load the main functions:
+Then, in Python started with `uv run python`, the following will load the main functions:
 ```
   from NEURAL_py_EEG import utils, preprocessing_EEG, generate_all_features
 ```
@@ -355,26 +355,42 @@ runs on Windows and Ubuntu.
   removed them from `scipy.signal` (same functions, same values).
 - `utils.py`: a docstring now writes `'$\\mu$V'` instead of `'$\mu$V'` (the
   same text), because `\m` is an invalid escape sequence (`SyntaxWarning`).
-- `setup.cfg`: the dependencies are declared (none were before), with the
-  oldest tested versions as lower bounds and `python_requires >=3.14`.
+- `pyproject.toml`: the package metadata, moved here from `setup.cfg` (now
+  removed). The dependencies are declared (none were before), with the oldest
+  tested versions as lower bounds and `requires-python >=3.14`.
 - New: `tests/` (regression tests and reference values), `requirements-dev.txt`,
-  pytest settings in `pyproject.toml`, `.gitignore`, and
-  `.github/workflows/tests.yml` (automatic tests on GitHub).
+  pytest settings in `pyproject.toml`, `.gitignore`,
+  `.github/workflows/tests.yml` (automatic tests on GitHub), `uv.lock` (the
+  exact version of every package), `.python-version` (3.14) and
+  `.github/workflows/uv-drift.yml` (the tests in the `uv.lock` environment on
+  GitHub, for information only).
 
-**Install** (Python 3.14; from this folder, ideally in a virtual environment)
+**Install** (Python 3.14; from this folder)
+
+With [uv](https://docs.astral.sh/uv/), which installs the exact versions in
+`uv.lock` into `.venv`:
+
+    uv sync --locked
+
+`--locked` stops with an error instead of changing `uv.lock`. uv installs
+NEURAL in editable mode (Python uses the code in this folder) and pytest
+(the `dev` group in `pyproject.toml`).
+
+With pip instead (versions not fixed: `pyproject.toml` gives only minimum
+versions; ideally in a virtual environment):
 
     python -m pip install -e .
     python -m pip install -r requirements-dev.txt
 
 `-e` ("editable") means Python uses the code in this folder. pyedflib 0.1.42
-has no ready-made package for Python 3.14, so pip compiles it: on Windows
-this needs the Microsoft C++ Build Tools, on Linux a C compiler.
+has no ready-made package for Python 3.14, so uv or pip compiles it: on
+Windows this needs the Microsoft C++ Build Tools, on Linux a C compiler.
 
 **Run the tests**
 
-    python -m pytest
+    uv run pytest
 
-This takes about 50 seconds. pytest first shows which NEURAL and library
+(with pip: `python -m pytest`). This takes about 50 seconds. pytest first shows which NEURAL and library
 versions it uses (and stops if it would test any copy of NEURAL other than
 this folder's `src/`); at the end it prints the largest difference from the
 reference values for each group.
@@ -412,7 +428,7 @@ reference values for each group.
   byte-identical files. `made_with` records the operating system as Python
   reports it (Python 3.7, for example, calls Windows 11 "Windows 10").
 
-**Tested versions** (native, Windows 11, Python 3.14.7; all 28 tests pass)
+**Tested versions** (native, Windows 11, Python 3.14.7; historical: all 28 tests of the suite at that time passed)
 
 | | numpy | scipy | pandas | mne | matplotlib | pyedflib | Largest difference |
 |---|---|---|---|---|---|---|---|
@@ -422,9 +438,9 @@ reference values for each group.
 
 The "Largest difference" column leaves out the window-type comparison with the
 2020 environment, which every run also makes: at most 1.6e-15 relative.
-The lower bounds in `setup.cfg` are the "Minimum versions" row, plus Python
-3.14. The "Requirements" table above lists the versions the original code
-was written with.
+The lower bounds in `pyproject.toml` are the "Minimum versions" row, plus Python
+3.14; `uv.lock` has the versions of the "Newest" row. The "Requirements" table
+above lists the versions the original code was written with.
 
 **Comparison with the original 2020 environment** (a one-off check, not part
 of the tests). The original NEURAL was also run on the same synthetic files

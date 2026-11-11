@@ -10,8 +10,10 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
 (`REMOVE_ART = 0` or `remove_art=False`); the tests in `tests/` check this.
 
 ### Changed
-- Dependencies are declared in `setup.cfg`: Python >= 3.14, numpy >= 2.4.6, scipy >= 1.18.0,
-  pandas >= 2.3.3 (pandas 3 supported), mne >= 1.13.2, matplotlib >= 3.10.8, pyedflib >= 0.1.42.
+- Package metadata moved from `setup.cfg` (removed) to the `[project]` table of `pyproject.toml`
+  (build backend setuptools >= 77). The dependencies are declared there: Python >= 3.14,
+  numpy >= 2.4.6, scipy >= 1.18.0, pandas >= 2.3.3 (pandas 3 supported), mne >= 1.13.2,
+  matplotlib >= 3.10.8, pyedflib >= 0.1.42. pytest is in the `dev` dependency group.
 - `utils.save_pd_as_edf` uses the pyedflib header key `sample_frequency` instead of `sample_rate`,
   which pyedflib 0.1.41 and later refuse (same meaning).
 
@@ -66,6 +68,11 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
   at their first failure. Shared changes below roughly 1e-5 relative can escape.
   Differences in the runner environment can affect rounding; the exact cause of the
   first hosted run's differences has not been determined.
+- `uv.lock`, with the exact version of every package, and `.python-version` (3.14):
+  `uv sync --locked` builds that environment.
+- GitHub Actions workflow `.github/workflows/uv-drift.yml`: on Windows and Ubuntu, builds the
+  `uv.lock` environment and runs the tests against the committed reference values. It is for
+  information only: a tolerance failure does not fail the workflow.
 
 ## [0.1.3] - 25-08-2022
 ### Changed 
