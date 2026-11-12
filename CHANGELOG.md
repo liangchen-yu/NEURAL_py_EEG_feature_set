@@ -10,6 +10,7 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
 (`REMOVE_ART = 0` or `remove_art=False`); the tests in `tests/` check this.
 
 ### Changed
+- Readability pass on the fork's own changes (comments and layout only; results unchanged).
 - Package metadata moved from `setup.cfg` (removed) to the `[project]` table of `pyproject.toml`
   (build backend setuptools >= 77). The dependencies are declared there: Python >= 3.14,
   numpy >= 2.4.6, scipy >= 1.18.0, pandas >= 2.3.3 (pandas 3 supported), mne >= 1.13.2,

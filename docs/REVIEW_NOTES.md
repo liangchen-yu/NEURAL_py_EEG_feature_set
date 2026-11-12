@@ -38,8 +38,9 @@ Package metadata moved from `setup.cfg` to `pyproject.toml`; `uv.lock` fixes eve
 
 The comparison is against original NEURAL_py (BSD-3-Clause) at
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be).
-Source line numbers refer to f69a3c7 (later commits change only documentation): `src/` is unchanged
-since 15e9aaa, and modules other than `preprocessing_EEG.py` since dd7235e.
+Source line numbers refer to f69a3c7 (later commits change only documentation
+and the readability of the fork's own changes): at that commit, `src/` was
+unchanged since 15e9aaa, and modules other than `preprocessing_EEG.py` since dd7235e.
 MATLAB line numbers refer to qEEG_feature_set
 [206a89b](https://github.com/otoolej/qEEG_feature_set/tree/206a89b8943f029a32947b1715f75b62ab8d5c8a).
 **Reported** marks figures from GitHub Actions logs or earlier one-off checks

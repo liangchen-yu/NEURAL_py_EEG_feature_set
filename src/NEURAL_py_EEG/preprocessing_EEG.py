@@ -100,8 +100,7 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     x_epochs.fill(np.nan)
     x_epochs_inds = np.zeros([N_epochs, L_epoch])
 
-    # if x is a pandas Series: make x[nf] below pick the same samples as with
-    # pandas < 3 (pandas 3 would raise KeyError for a datetime index)
+    # Preserve pandas < 3 position/label indexing for x[nf].
     x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
@@ -125,9 +124,8 @@ def art_per_channel(x, Fs, DBverbose):
     :param Fs: sampling frequency
     :return: x, data with artefacts set as nan
 
-    Note: x itself is changed too (artefacts are set to NaN in it), so it must
-    be a writable array; remove_artefacts passes a copy of each channel
-    (.to_numpy(copy=True)), as needed from pandas 3 on.
+    Mutates x in place, so it must be writable. remove_artefacts passes a
+    channel copy because pandas 3 arrays can be read-only.
     """
     params = NEURAL_parameters.NEURAL_parameters()
 
@@ -312,9 +310,8 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
             had_nans = np.isnan(x_ref).any()
             x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_ref, Fs, 20, 0.5, 5)
             if had_nans:
-                # The filter fills any NaN in the array it is given. The
-                # original passed pandas' own array (a view in pandas < 3), so
-                # this also filled the NaN in data_ref. Keep that explicitly.
+                # Preserve the original pandas-view side effect: filled NaN
+                # samples must also reach the caller's DataFrame.
                 data_ref[channel_names_ref[ch]] = x_ref
 
         r = np.corrcoef(x_filt)
@@ -361,9 +358,8 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
             x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
             for ch in range(N_channels):
-                # As in step 0: filter a copy, then keep the original's side
-                # effect. The NaN filled here were also filled in data, so the
-                # per-channel artefact checks below saw the filled values.
+                # Keep the original NaN filling in data so later artefact
+                # checks see the same samples as with pandas views.
                 x_bi = data[ch_labels[ichannels[ch]]].to_numpy(copy=True)
                 had_nans = np.isnan(x_bi).any()
                 x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_bi, Fs, 20, 0.5, 5)
@@ -421,10 +417,8 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         ct += 1
         irem = np.append(irem, np.where(np.isnan(data[ch_labels[n]])))
         if any(np.isinf(data[ch_labels[n]])):
-            # The original wrote data[col][idx] = np.nan ("chained assignment"),
-            # which pandas 3 silently ignores. One .loc assignment with a
-            # True/False mask does the same in every pandas version. As
-            # before, only +inf becomes NaN.
+            # pandas 3 ignores chained assignment; use .loc instead.
+            # Preserve the original replacement of +inf only.
             data.loc[data[ch_labels[n]] == np.inf, ch_labels[n]] = np.nan
 
     # remove artefacts across all channels
@@ -483,7 +477,7 @@ def signal_downsample(pd_data, Fs, Fs_new):
     cols = list(pd_data.columns)
 
     def isint(x):
-        return x == round(x)  # as in MATLAB NEURAL, preprocessing/resample_savemat.m
+        return x == round(x)  # matches MATLAB resample_savemat.m:140
 
     pd_data_downsample = pd.DataFrame()
     loop_index = 0
@@ -497,16 +491,11 @@ def signal_downsample(pd_data, Fs, Fs_new):
             pd_data_downsample.insert(loop_index, cols[i], eeg_data)
             loop_index += 1
     else:
-        # Resample by the ratio Fs_new/Fs, as MATLAB resample(x, Fs_new, Fs) does in
-        # preprocessing/resample_savemat.m: exact when both rates are whole numbers, otherwise
-        # approximated by a fraction with denominator <= 10000. A ratio based on the recording
-        # length gives a slightly wrong rate when the length is not a whole number of seconds (e.g.
-        # 1001 samples at 200 Hz gave 63.936 Hz, labelled 64 Hz). Whole-second recordings at
-        # whole-number rates give the same result either way.
-        ratio = Fraction(Fs_new) / Fraction(Fs)  # reduced by the greatest common divisor
+        # Match MATLAB resample_savemat.m:152; the rate must not depend on length.
+        rate_ratio = Fraction(Fs_new) / Fraction(Fs)
         if not (isint(Fs) and isint(Fs_new)):
-            ratio = ratio.limit_denominator(10000)
-        up, down = ratio.numerator, ratio.denominator
+            rate_ratio = rate_ratio.limit_denominator(10000)
+        up, down = rate_ratio.numerator, rate_ratio.denominator
 
         size_resampled = signal.resample_poly(np.ones(len(pd_data)), up, down).size
 
@@ -531,22 +520,18 @@ def signal_downsample(pd_data, Fs, Fs_new):
 def main_preprocessing(file, save_converted=None, save=0, Fs_new=64, remove_art=None):
     """
     This function is used to  a) read in EEG from .edf files
-                              b) remove artefacts (can be turned off, see remove_art)
+                              b) remove artefacts (optional; see remove_art)
                               c) band-pass filter
                               d) downsample
                               e) save as .csv file
 
-    remove_art: turns artefact removal (step b) on or off.
-        None (default): use REMOVE_ART in NEURAL_parameters.py (default 1, on),
-        as MATLAB NEURAL does (preprocessing/resample_savemat.m).
-        True: call remove_artefacts, as before.
-        False: skip remove_artefacts. The bipolar montage goes on to the filter
-        unchanged, and the returned amount_removed is None.
+    remove_art: None uses REMOVE_ART (default 1, on), as in MATLAB
+        resample_savemat.m. True runs removal; False sends the bipolar
+        montage directly to the filter and returns amount_removed=None.
 
-    Warning: turning artefact removal off skips all six artefact checks
-    (referential low correlation, electrode coupling, and the per-channel
-    checks for zeros, high amplitude, constant values and sudden jumps).
-    Use it only for data already checked for artefacts.
+    Warning: False skips all six checks: referential low correlation,
+    electrode coupling, zeros, high amplitude, constant values and sudden
+    jumps. Use only data already checked for artefacts.
     """
     data, ch_fs = load_edf_EEG_file(file)
     Fs = ch_fs[0]  # Assuming all EEG channels
@@ -556,7 +541,7 @@ def main_preprocessing(file, save_converted=None, save=0, Fs_new=64, remove_art=
     if remove_art is None:
         remove_art = NEURAL_parameters.NEURAL_parameters()["REMOVE_ART"]
 
-    # as in MATLAB NEURAL, preprocessing/resample_savemat.m: if(REMOVE_ART) ... end
+    # Match MATLAB resample_savemat.m:120-122.
     if remove_art:
         clean_data, amount_removed = remove_artefacts(
             montage_data.copy(),

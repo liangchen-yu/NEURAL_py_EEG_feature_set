@@ -53,8 +53,7 @@ def get_window(win_length, win_type, Npad=0):
         win = np.ones(win_length)
     elif win_type == "black" or win_type == "blackman":
         win = np.blackman(win_length)
-    # SciPy 1.13 removed tukey, bartlett and blackmanharris from scipy.signal;
-    # the same functions are in scipy.signal.windows (since SciPy 1.1).
+    # SciPy 1.13 removed these from signal; signal.windows has them since 1.1.
     elif win_type == "blackmanharris":
         win = signal.windows.blackmanharris(win_length)
     elif win_type == "kaiser":
@@ -123,15 +122,10 @@ def pad_win(w, Npad):
 
 
 def index_like_pandas2(x):
-    """
-    Make x[positions] pick the same samples that pandas < 3 picked.
+    """Make x[positions] pick the same samples that pandas < 3 picked.
 
-    For a pandas Series, x[[0, 1, 2]] used positions when the index does not
-    hold numbers (for example a datetime or text index) and labels when it
-    does (for example the default 0, 1, 2, ...). pandas 3 always uses labels,
-    which fails for a datetime or text index. This keeps the pandas < 3 rule:
-    for an index without numbers the values are returned as a NumPy array (so
-    [] uses positions); anything else is returned unchanged.
+    pandas 3 uses labels. Keep Series with the listed index types unchanged;
+    use array positions for other Series. Leave non-Series inputs unchanged.
     """
     if isinstance(x, pd.Series) and x.index.inferred_type not in (
         "integer",
@@ -411,8 +405,8 @@ def filter_zerophase(
     Outputs:
         y - filtered signal
 
-    Note: x itself is changed: any NaN in it are set to 0. So x must be a
-    writable array; from pandas 3 on, use e.g. .to_numpy(copy=True).
+    Sets NaN in x to 0 in place; use a writable array, e.g.
+    .to_numpy(copy=True) with pandas 3.
 
     Example:
         import utils
@@ -534,10 +528,9 @@ def filter_butterworth_withnans(
         y - filtered signal
         inans - locations of nans
 
-    Note: with FILTER_REPLACE_ARTEFACTS 'zeros' or 'linear_interp' (the
-    default), the NaN in x itself are filled (remove_artefacts relies on
-    this), so x must be a writable array; from pandas 3 on, use e.g.
-    .to_numpy(copy=True). 'cubic_interp' and 'nans' work on a copy of x.
+    'zeros' and default 'linear_interp' fill NaN in x in place; remove_artefacts
+    relies on this. Use a writable array (pandas 3: .to_numpy(copy=True)).
+    'cubic_interp' and 'nans' work on a copy of x.
 
     Example:
         import utils
@@ -789,21 +782,19 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["digital_min"] = f.getDigitalMinimum(loc)
             ch_dict["digital_max"] = f.getDigitalMaximum(loc)
             ch_dict["dimension"] = f.getPhysicalDimension(loc)
-            # pyedflib 0.1.41+ refuses the old key name "sample_rate"
-            # (same meaning: samples per second).
+            # pyedflib 0.1.41+ rejects "sample_rate"; units remain samples/second.
             ch_dict["sample_frequency"] = f.getSampleFrequency(loc)
             ch_dict["label"] = ch
             ch_dict["transducer"] = f.getTransducer(loc)
             ch_dict["prefilter"] = f.getPrefilter(loc)
 
             samples_in_file.append(data.shape[0])
-            # pandas 3 gives a read-only array, so work on a copy. NaN are
-            # written as 0. In the original, pandas < 3 gave a view, so the
-            # caller's DataFrame got the 0s too: keep that explicitly.
+            # pandas 3 needs a writable copy; preserve the NaN-to-zero
+            # writeback that pandas < 3 did through a view of the DataFrame.
             x = data[ch].to_numpy(copy=True)
-            inans = np.where(np.isnan(x))[0]
-            x[inans] = 0
-            if inans.size != 0:
+            nan_indices = np.where(np.isnan(x))[0]
+            x[nan_indices] = 0
+            if nan_indices.size != 0:
                 data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
@@ -822,11 +813,11 @@ def save_pd_as_edf(data, file_save_name, original_edf_file=None, Fs=250):
             ch_dict["prefilter"] = ""
 
             samples_in_file.append(data.shape[0])
-            # writable copy; NaN -> 0 here and in the caller's DataFrame (see above)
+            # Preserve the same NaN writeback with a writable copy (see above).
             x = data[ch].to_numpy(copy=True)
-            inans = np.where(np.isnan(x))[0]
-            x[inans] = 0
-            if inans.size != 0:
+            nan_indices = np.where(np.isnan(x))[0]
+            x[nan_indices] = 0
+            if nan_indices.size != 0:
                 data[ch] = x
             data_list.append(x)
             channel_info.append(ch_dict)
