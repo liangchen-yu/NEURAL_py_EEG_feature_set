@@ -6,8 +6,33 @@ All notable changes to this project will be documented in this file. Project fir
 Maintained fork (see README, "Maintenance"). With the same library versions, the results are
 identical to release 0.1.3 (commit 78c9425), except at the rates changed by the downsampling fix
 (odd multiples of 32 Hz above 64 Hz), for recordings that are not a whole number of seconds at
-non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turned off
-(`REMOVE_ART = 0` or `remove_art=False`); the tests in `tests/` check this.
+non-integer rate ratios (e.g. 200 or 250 Hz), when artefact removal is turned off
+(`REMOVE_ART = 0` or `remove_art=False`), and for `spectral_diff` (see "Output changes");
+the tests in `tests/` check this.
+
+### Output changes
+- `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit
+  a279ddd (2020-04-23; `spectral_features.m`: `spec_diff=zeros(1,N_epochs - 1)`). The feature is
+  the median of the N_epochs - 1 differences between consecutive spectrogram windows; the array
+  had N_epochs entries, so one unfilled 0 was also in the median, lowering it.
+  **Default `spectral_diff` values change**; they can only increase or stay the same. With no
+  valid window-to-window difference the result is now NaN instead of 0, as in MATLAB, and numpy
+  warns: "Mean of empty slice" for a single window (with the defaults, any input shorter than
+  3 s, including inputs shorter than 2 s), "All-NaN slice encountered" if every window contains
+  NaN. No other output changes.
+  Measured with the default settings (64 Hz, 2 s windows, 50 % overlap), change per band
+  (0.5-4 / 4-7 / 7-13 / 13-30 Hz):
+  - white noise, 200 seeds, median [range]: 64 s (63 windows) +1.3 / +1.4 / +1.2 / +0.6 %
+    [0 to +10 %]; 8 s (7 windows) +13 / +13 / +12 / +6 % [0 to +281 %].
+  - synthetic EEG (`tests/synthetic_edf.py`, channel C3: every 4th sample of the 256 Hz signal,
+    `[::4]`, i.e. 64 Hz; first 64 s / first 8 s): 64 s +3.9 / +0.05 / +6.0 / +1.1 %;
+    8 s +14 / +24 / +27 / +15 %.
+  - full pipeline on the synthetic test recordings (64 s epochs, median over channels and
+    epochs): clean +0.9 / +2.2 / +2.9 / +0.5 %, artefacts +2.7 / +3.0 / +1.1 / +0.8 %; per
+    channel and epoch, +0.01 % to +27 %.
+  The regression tests compare every other output with the original's reference values, and
+  `spectral_diff` with the original plus this one-line fix (see "Added").
+  `tests/test_spectral_diff_fix.py` shows that the fixed `spectral_diff` is right.
 
 ### Changed
 - Readability pass on the fork's own changes (comments and layout only; results unchanged).
@@ -59,6 +84,16 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
 - Regression tests (`tests/`) that compare every output with reference values from the original
   code (78c9425), on deterministic synthetic inputs, including NaN, +/-inf, EDF export, other
   kinds of row index, read-only arrays and the window types above.
+- Reference files: `tests/make_reference.py` also runs the original NEURAL with only the
+  one-line fix of MATLAB commit a279ddd (2020-04-23) applied in memory, and stores its
+  `spectral_diff` values in each reference file (section `with_matlab_fix_a279ddd`). They are
+  made in the same run and environment as the rest of the file, also on GitHub Actions. The tests
+  compare `spectral_diff` with them and every other output with the original's values, with the
+  same strict tolerance (`neural_outputs.with_matlab_fix`). All original values in the reference
+  files are unchanged.
+- `tests/test_spectral_diff_fix.py`: proves the fixed `spectral_diff` is right, against an
+  independent computation of the window-to-window differences on synthetic signals, including
+  NaN windows and inputs with no valid difference.
 - GitHub Actions workflow (`.github/workflows/tests.yml`), `requirements-dev.txt`, `.gitignore`.
 - Same-machine GitHub Actions comparison against the original code in an isolated
   environment, retaining the strict tolerance and committed 2020 window references.

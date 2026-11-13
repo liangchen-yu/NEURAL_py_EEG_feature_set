@@ -6,7 +6,8 @@
     "inf_input": "Real +/-inf input: the original fails with this error.",
     "edf_export": "utils.save_pd_as_edf: what the written files contain, and the caller's DataFrame afterwards (the original also set its NaN to 0). pyedflib 0.1.41+ refuses the original's header key 'sample_rate', so while making this reference the key was renamed to 'sample_frequency' (same meaning) on its way into pyedflib.",
     "fingerprint": "Per column: NaN stretches as [first, last + 1], number of +inf and -inf, sum and sum of squares of the finite values, min, max, and every 997th sample.",
-    "null": "null means NaN (not a number)."
+    "null": "null means NaN (not a number).",
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values."
   },
   "made_with": {
     "python": "3.14.7",
@@ -711,6 +712,18 @@
           "nan_left": 0,
           "values_where_nan_was": [0.0]
         }
+      }
+    }
+  },
+  "with_matlab_fix_a279ddd": {
+    "nan_input": {
+      "features": {
+        "spectral_diff": [0.008516741464539294,0.02231987771469674,0.012733577742988687,0.01384904813727601]
+      }
+    },
+    "inf_line": {
+      "features": {
+        "spectral_diff": [0.008750387304486722,0.023480753399706598,0.01228248205217903,0.014118810901275758]
       }
     }
   }

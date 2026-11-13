@@ -412,7 +412,9 @@ reference values for each group.
   main and edge-case values come from the original with pandas 2.3.3; the
   window values from the original in its 2020 environment, the only place
   the old window functions still exist. The script's header lists the exact
-  commands.
+  commands. `spectral_diff` is compared with values the same run makes with
+  the original plus only the one-line fix of MATLAB commit a279ddd
+  (2020-04-23), which this repository includes (see CHANGELOG).
 - Comparison: the tests check every stored value, allowing a relative
   difference of 1e-9 (absolute 1e-12) so that they can also run with other
   library versions; NaN must be NaN in both, and counts, positions and text

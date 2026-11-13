@@ -35,6 +35,12 @@ original NEURAL (plotting off: set MPLBACKEND=Agg):
 files elsewhere (e.g. to check they come out byte-identical). Running it
 again in the same environment gives byte-identical files.
 
+Each file also has a section "with_matlab_fix_a279ddd": the spectral_diff
+values of the original with only the one-line fix of MATLAB commit a279ddd
+(2020-04-23) applied in memory, made in the same run and environment. This
+repository includes that fix, so the tests compare spectral_diff with these
+values (see neural_outputs.with_matlab_fix).
+
 GitHub Actions runs "main edge inputs" with the original code on each runner.
 The tests then compare the fork with those same-machine values, while a
 separate drift guard checks them against the committed references. The
@@ -82,6 +88,11 @@ ORIGINAL_SHA256 = {
     "utils.py": "128828611b30d87fc5534f0eaa62ab9b10936ed5598403e8c90807227db8923a",
 }
 
+ABOUT_FIX = ("spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit "
+             "a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes "
+             "np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository "
+             "includes that fix, so the tests compare its spectral_diff with these values.")
+
 ABOUT = {
     "what": "Reference values for tests/test_regression.py: the outputs of the original NEURAL "
             "(see made_with) for one synthetic EDF file (see input). Made by tests/make_reference.py.",
@@ -96,6 +107,7 @@ ABOUT = {
                 "feats_median_ch [epochs][bands]; feats_per_epochs [channels][epochs][bands], not for "
                 "connectivity features, which compare pairs of channels.",
     "null": "null means NaN (not a number), e.g. an epoch NEURAL skipped because it was mostly artefact.",
+    neural_outputs.FIX_SECTION: ABOUT_FIX,
 }
 
 ABOUT_EDGE = {
@@ -116,6 +128,7 @@ ABOUT_EDGE = {
     "fingerprint": "Per column: NaN stretches as [first, last + 1], number of +inf and -inf, sum and sum "
                    "of squares of the finite values, min, max, and every 997th sample.",
     "null": "null means NaN (not a number).",
+    neural_outputs.FIX_SECTION: ABOUT_FIX,
 }
 
 ABOUT_INPUTS = {
@@ -131,6 +144,7 @@ ABOUT_INPUTS = {
                  "writable arrays, so these values were made with writable ones; the tests use read-only "
                  "arrays (as pandas 3 gives) and expect the same values. inputs_unchanged: the input arrays "
                  "were left unchanged.",
+    neural_outputs.FIX_SECTION: ABOUT_FIX,
 }
 
 ABOUT_WINDOWS = {
@@ -141,6 +155,7 @@ ABOUT_WINDOWS = {
     "features": "Every feature whose result depends on the window type, computed with each window "
                 "(values), and how many times NEURAL's utils.get_window was asked for that window "
                 "type (window_calls; it must be more than 0).",
+    neural_outputs.FIX_SECTION: ABOUT_FIX,
 }
 
 
@@ -211,6 +226,33 @@ def made_with():
     return versions
 
 
+@contextlib.contextmanager
+def with_matlab_fix_a279ddd():
+    """The original NEURAL with only the one-line fix of MATLAB commit a279ddd
+    (2020-04-23) applied, in memory: spectral_diff's array of differences gets
+    N_epochs - 1 entries instead of N_epochs. The installed files are not changed."""
+    from NEURAL_py_EEG import spectral_features
+
+    original = spectral_features.spectral_diff
+    source = inspect.getsource(original)
+    old, new = "spec_diff = np.zeros(N_epochs)", "spec_diff = np.zeros(N_epochs - 1)"
+    if source.count(old) != 1:
+        raise SystemExit("No reference written: the line %r is not in the original spectral_diff." % old)
+    # main_spectral looks spectral_diff up in the module when it is called.
+    exec(compile(source.replace(old, new), "<spectral_diff with MATLAB fix a279ddd>", "exec"),
+         vars(spectral_features))
+    try:
+        yield
+    finally:
+        spectral_features.spectral_diff = original
+
+
+def fix_section(make):
+    """make() run again with the MATLAB fix; only its spectral_diff values are kept."""
+    with with_matlab_fix_a279ddd():
+        return neural_outputs.only_fixed_feature(make())
+
+
 def write_json(value, folder, name):
     path = Path(folder) / name
     with open(str(path), "w", encoding="utf-8", newline="\n") as f:
@@ -264,6 +306,8 @@ def make_main_reference(case, features, folder):
         "artefact_report": neural_outputs.artefact_report(amount_removed),
         "preprocessed": neural_outputs.preprocessed_summary(data),
         "features": one_by_one,
+        neural_outputs.FIX_SECTION: fix_section(lambda: {"features": neural_outputs.compute_features(
+            data, [neural_outputs.FIXED_FEATURE])}),
     }
 
 
@@ -320,6 +364,8 @@ def make_edge(output):
                  "inf_input": edge_cases.inf_input_failure()}
     with tempfile.TemporaryDirectory() as folder, pyedflib_accepts_sample_rate():
         reference["edf_export"] = edge_cases.export_results(folder)
+    reference[neural_outputs.FIX_SECTION] = fix_section(lambda: {
+        "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     print("edge cases: NaN artefact report %s; real +/-inf input: %s"
           % (reference["nan_input"]["artefact_report"]["percent_removed_worst_channel"], reference["inf_input"]))
     write_json(reference, output, "reference_edge_cases.json")
@@ -331,7 +377,8 @@ def make_inputs(output):
     reference = {"about": ABOUT_INPUTS,
                  "made_with": dict(made_with(), neural_sha256_verified=True),
                  "index_types": edge_cases.index_type_results(),
-                 "read_only": edge_cases.read_only_results(read_only=False)}
+                 "read_only": edge_cases.read_only_results(read_only=False),
+                 neural_outputs.FIX_SECTION: fix_section(lambda: {"index_types": edge_cases.index_type_results()})}
     write_json(reference, output, "reference_input_types.json")
 
 
@@ -344,7 +391,8 @@ def make_windows(output):
                          "original window code cannot run. Use the 2020 environment (see the top of this file).")
     reference = {"about": ABOUT_WINDOWS,
                  "made_with": dict(made_with(), neural_sha256_verified=True),
-                 "windows": edge_cases.window_results()}
+                 "windows": edge_cases.window_results(),
+                 neural_outputs.FIX_SECTION: fix_section(lambda: {"windows": edge_cases.window_results()})}
     write_json(reference, output, "reference_windows.json")
 
 

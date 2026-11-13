@@ -2,7 +2,8 @@
   "about": {
     "what": "Reference values for the window types 'tuke', 'bart' and 'blackmanharris' (tests/test_edge_cases.py), from the original NEURAL in Brian Murphy's 2020 environment (see made_with), where scipy.signal still had these functions. Steps: edge_cases.window_results.",
     "windows": "The window functions themselves (utils.get_window, gen_epoch_window, gen_window).",
-    "features": "Every feature whose result depends on the window type, computed with each window (values), and how many times NEURAL's utils.get_window was asked for that window type (window_calls; it must be more than 0)."
+    "features": "Every feature whose result depends on the window type, computed with each window (values), and how many times NEURAL's utils.get_window was asked for that window type (window_calls; it must be more than 0).",
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values."
   },
   "made_with": {
     "python": "3.7.9",
@@ -187,6 +188,24 @@
       "connectivity_BSI, blackmanharris window": {
         "values": [0.06626061053234186,0.11036533821498312,0.08741345153948712,0.09922294635544927],
         "window_calls": 8
+      }
+    }
+  },
+  "with_matlab_fix_a279ddd": {
+    "windows": {
+      "features": {
+        "spectral_diff, tuke window": {
+          "values": [0.010708208722310354,0.02047138847402899,0.008301505663917966,0.017391014177266188],
+          "window_calls": 1
+        },
+        "spectral_diff, bart window": {
+          "values": [0.010301772627976668,0.019713247247818675,0.009722276643203513,0.010534247154202599],
+          "window_calls": 1
+        },
+        "spectral_diff, blackmanharris window": {
+          "values": [0.0146438194701695,0.017154550555733887,0.01126478417623572,0.010788314417068057],
+          "window_calls": 1
+        }
       }
     }
   }

@@ -5,6 +5,10 @@ The reference numbers in tests/data/ were made by tests/make_reference.py
 with the original NEURAL and pandas 2.3.3. Each test runs the code in this
 repository on the same inputs and compares every number, with a strict
 tolerance (see neural_outputs.RTOL and ATOL). Run with:  pytest
+
+spectral_diff is compared, with the same tolerance, with the values of the
+original plus the one-line MATLAB fix a279ddd, which make_reference.py stores
+in the same reference files (neural_outputs.with_matlab_fix).
 """
 import pytest
 

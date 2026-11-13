@@ -362,6 +362,19 @@ def spectral_diff(x, Fs, feat_name, params_st):
     ---------------------------------------------------------------------
      spectral difference using the spectrogram
     ---------------------------------------------------------------------
+    For each frequency band, the spectrogram (windows of params_st['L_window']
+    seconds, overlapping by params_st['overlap'] percent) is scaled by its
+    largest value in the band. The result is the median, over the
+    N_epochs - 1 pairs of consecutive windows, of the mean squared difference
+    between the two windows' band spectra.
+
+    NaN: a window with any NaN sample has an all-NaN spectrum; the
+    differences that involve it are NaN and left out of the median. With no
+    valid difference the result is NaN, with a numpy RuntimeWarning: a single
+    window (with the defaults, any input shorter than 3 s, including inputs
+    shorter than the 2 s window) gives "Mean of empty slice"; every window
+    NaN gives "All-NaN slice encountered".
+
     :param x: Epoch data
     :param Fs: Sampling frequency
     :param feat_name: Name of feature
@@ -396,7 +409,10 @@ def spectral_diff(x, Fs, feat_name, params_st):
 
         S_stft_band = S_stft[:, ibandpass] / np.nanmax(np.nanmax(S_stft[:, ibandpass]))
 
-        spec_diff = np.zeros(N_epochs)
+        # MATLAB commit a279ddd (2020-04-23): there are N_epochs - 1
+        # differences between consecutive windows. Allocating N_epochs left one
+        # unfilled 0 in the median, lowering the result. Changes default output.
+        spec_diff = np.zeros(N_epochs - 1)
         for n in range(N_epochs - 1):
             v1 = S_stft_band[n, :]
             v2 = S_stft_band[n + 1, :]

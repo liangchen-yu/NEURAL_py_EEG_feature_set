@@ -252,6 +252,77 @@ def compare_tree(new, reference, case, group, where=""):
         compare(new, reference, case, group, where)
 
 
+# ---------------------------------------------------------------------------
+# spectral_diff: a fix taken from the MATLAB NEURAL after the original
+# ---------------------------------------------------------------------------
+# This repository's spectral_diff has the one-line fix of MATLAB commit
+# a279ddd (2020-04-23). make_reference.py also runs the original NEURAL with
+# only that line changed, and stores its spectral_diff values in each
+# reference file under FIX_SECTION, at the same places as in the rest of the
+# file. The tests compare spectral_diff with those values and every other
+# output with the original's. tests/test_spectral_diff_fix.py checks that the
+# fixed spectral_diff itself is right.
+FIXED_FEATURE = "spectral_diff"
+FIX_SECTION = "with_matlab_fix_a279ddd"
+
+
+def fixed_feature_places(tree, path=()):
+    """Paths of the dictionary keys that name spectral_diff ("spectral_diff",
+    or e.g. "spectral_diff, tuke window")."""
+    for key, value in tree.items():
+        if key == FIXED_FEATURE or key.startswith(FIXED_FEATURE + ","):
+            yield path + (key,)
+        elif isinstance(value, dict):
+            for found in fixed_feature_places(value, path + (key,)):
+                yield found
+
+
+def get(tree, path):
+    for key in path:
+        tree = tree[key]
+    return tree
+
+
+def only_fixed_feature(tree):
+    """The spectral_diff entries of tree, at the same places, and nothing else."""
+    result = {}
+    for path in fixed_feature_places(tree):
+        node = result
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = get(tree, path)
+    return result
+
+
+def check_fix_not_lower(new, old, where):
+    """Sanity check of the stored values: the fix removes a 0 from a median of
+    values >= 0, so no value can fall; NaN stays NaN, and a new NaN only
+    replaces a 0 (no window-to-window difference)."""
+    if isinstance(old, dict):
+        for key in old:
+            check_fix_not_lower(new[key], old[key], "%s %s" % (where, key))
+    elif not _exact(old):
+        a, b = np.atleast_1d(to_array(new)), np.atleast_1d(to_array(old))
+        finite = np.isfinite(a) & np.isfinite(b)
+        new_nan = np.isnan(a) & ~np.isnan(b)
+        assert (a.shape == b.shape and np.all(a[finite] >= b[finite] - ATOL - RTOL * np.abs(b[finite]))
+                and np.all(np.isnan(a[np.isnan(b)])) and np.all(b[new_nan] == 0)), \
+            "%s: the values with the MATLAB fix are lower than the original's" % where
+
+
+def with_matlab_fix(reference):
+    """The reference as the tests use it: spectral_diff values from the
+    original plus the MATLAB fix (FIX_SECTION), all other values unchanged."""
+    reference = copy.deepcopy(reference)
+    fixed = reference.pop(FIX_SECTION)
+    places = sorted(fixed_feature_places(reference))
+    assert places == sorted(fixed_feature_places(fixed)), "%s does not match the reference" % FIX_SECTION
+    for path in places:
+        check_fix_not_lower(get(fixed, path), get(reference, path), " ".join(path))
+        get(reference, path[:-1])[path[-1]] = get(fixed, path)
+    return reference
+
+
 def compare_feature(new, reference, case, group, feature):
     """Compare all of NEURAL's outputs for one feature with the reference."""
     assert new["columns"] == reference["columns"], f"{case} / {feature}: different column names"

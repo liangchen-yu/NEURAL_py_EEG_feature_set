@@ -11,7 +11,9 @@ this repository's NEURAL with reference values made by the ORIGINAL NEURAL
                                         had these window functions)
 
 The inputs and steps are in tests/edge_cases.py; tests/make_reference.py
-made the reference files.
+made the reference files. spectral_diff is compared with the values of the
+original plus the MATLAB fix a279ddd, stored in the same files
+(neural_outputs.with_matlab_fix).
 """
 import json
 from pathlib import Path
@@ -31,7 +33,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
 
 def load(name):
-    return json.loads((DATA / name).read_text(encoding="utf-8"))
+    return neural_outputs.with_matlab_fix(json.loads((DATA / name).read_text(encoding="utf-8")))
 
 
 @pytest.fixture(scope="module")
