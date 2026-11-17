@@ -53,6 +53,11 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
   (e.g. 1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at whole-number rates give
   identical results. `tests/test_downsample_rates.py` covers odd and whole-second lengths, all-NaN
   channels, a 64.5 Hz target rate and the inherited growth of NaN gaps.
+- `preprocessing_EEG.remove_artefacts` called without referential data (an empty DataFrame) no
+  longer stops with `IndexError` when the electrode-coupling check runs (more than 4 bipolar
+  channels, at least 2 on each side). That check's work array is now sized from the bipolar
+  channels, as in MATLAB `remove_artefacts.m` (line 111), not from the referential data. No change
+  to results that previously worked. `tests/test_referential_crash.py` covers this.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original

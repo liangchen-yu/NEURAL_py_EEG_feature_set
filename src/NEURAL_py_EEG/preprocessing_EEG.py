@@ -359,7 +359,10 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         if len(ileft) > 1 and len(iright) > 1:
             x_means = np.zeros(N_channels)
 
-            x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
+            # One row per remaining bipolar channel, as MATLAB
+            # remove_artefacts.m:111 (zeros(N_channels,N)). Sizing it from the
+            # referential data failed when none were given.
+            x_filt = np.zeros([N_channels, N])
             for ch in range(N_channels):
                 # As in step 0: filter a copy, then keep the original's side
                 # effect. The NaN filled here were also filled in data, so the
