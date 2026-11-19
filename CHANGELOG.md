@@ -18,6 +18,12 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
   which pyedflib 0.1.41 and later refuse (same meaning).
 
 ### Fixed
+- `utils.filter_zerophase` names the filter type for `scipy.signal.firwin`, as MATLAB
+  `filter_zerophase.m` does. Before, firwin's default kept 0 Hz, so a band-pass gave a band-stop
+  and a high-pass gave a low-pass. Ported from Brian Murphy's PyPI release 0.1.4 (26 Jul 2022),
+  which was never on GitHub. Low-pass and band-stop filters are unchanged, and the default
+  pipeline uses only the low-pass, so default results do not change
+  (`tests/test_filter_zerophase_type.py`).
 - pandas 3 (Copy-on-Write): `preprocessing_EEG.remove_artefacts` filters copies of the channels and
   keeps, explicitly, the original's in-place filling of pre-existing NaN in the DataFrames it is
   given (the cleaned output depends on it).
