@@ -12,6 +12,28 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 - **Referential-check mismatch:** in a reported run of all 169 recordings of the public HIE dataset with the original code at default settings, the low-correlation check removed every bipolar channel in 50 of 96 recordings at 200 Hz and none of 73 at 256 Hz. Changing only the reference in software switched these removals on and off (see [Artefact detection](#artefact-detection) and decision 6). MATLAB lets users skip this check alone; in Python that currently fails whenever the electrode-coupling check runs.
 - **Correlation:** the NEURAL paper and both implementations specify Pearson; the README table's "Spearman" was a documentation error, now corrected.
 
+## Fix branches awaiting review
+
+These branches are in this repository but not merged, so `master` and the rest of these notes do not include them. Each passes the 54 existing tests plus those listed. “Bit-identical” means the same bytes on synthetic inputs, on one machine.
+
+| Branch and head | What it changes | Why | Default results | Tests added | Status |
+|---|---|---|---|---|---|
+| `readability` 5c98791 | Clearer docstrings, comments and local names in `amplitude_features` and `fd_features`; comments and docstrings only in `IBI_features`. Also shortens comments and docstrings in `connectivity_features`, `generate_all_features`, `preprocessing_EEG` and `utils`, and renames one local name in each of the last two. | Easier review; no change in behaviour intended. | Unchanged (bit-identical). | None. | Reviewed independently; not merged. |
+| `fd-matlab-match` 3dd64f5 | `main_fd` uses one band per row of `freq_bands`, follows `params['method']`, filters each band from a fresh copy of the input and calls Katz without `qmax`. Empty `freq_bands` gives one unfiltered value. With `'FD'`, a missing or unknown method raises `ValueError`. | MATLAB `fd_features.m`: `size(freq_bands,1)` (line 47), `params_st.method` (line 60), `fd_katz(x)` (line 71). Before, a list of bands gave only 2 values and `method` was ignored. | Unchanged (bit-identical). | `tests/test_fd_bands.py` (14). | Reviewed independently; not merged. |
+| `spectral-diff-matlab-fix` e609f95 | `spectral_diff` takes the median of the `N_epochs - 1` differences between consecutive windows. The array had one extra entry, left at 0, which lowered the median. | MATLAB `spectral_features.m`, commit a279ddd (2020-04-23). | **Changes, for `spectral_diff` only.** On the two synthetic recordings (default 64 s epochs): summaries +0.5 to +3 %; per channel and epoch +0.01 to +27 %. With no valid difference the result is NaN, not 0. | `tests/test_spectral_diff_fix.py` (11). The reference files gain the fixed values in a new section; the original values are unchanged. | Reviewed independently; not merged. |
+| `connectivity-crash-fix` bad0741 | Pairs channels by label whenever there are two or more, so two channels no longer crash. Missing labels give a warning and NaN per band; no left/right pair gives NaN per band. BSI with one left channel uses that channel and its matched right channel. | Restores the 2020 Python fix 81a04e6, lost in 6638773. MATLAB 867849b and c521173. | Unchanged (bit-identical). Two non-default cases change: with no left/right pair, the number of NaN values now follows the number of bands (it was always 4); BSI with one left channel and a band holding only the 0 Hz bin now gives that band's value (it gave a whole-spectrum average). | `tests/test_connectivity_crashes.py` (34). | Reviewed independently; not merged. |
+| `referential-crash-fix` 5fde433 | The electrode-coupling check sizes its work array as `[N_channels, N]`, so `remove_artefacts` no longer crashes without referential data. A direct call with an empty DataFrame can now skip only the referential check, as MATLAB does. No new setting: `main_preprocessing` still passes referential data. | MATLAB `remove_artefacts.m:111`, `zeros(N_channels,N)`. | Unchanged (bit-identical). | `tests/test_referential_crash.py` (14). | Reviewed independently; not merged. |
+
+**Merging:** use an ordinary merge, not squash. `fd-matlab-match`, `spectral-diff-matlab-fix` and `connectivity-crash-fix` contain the `readability` commits, and squashing all the branches makes `fd_features.py` conflict; `referential-crash-fix` starts directly from `master`. Either way, `connectivity-crash-fix` and `referential-crash-fix` add to the same place in `CHANGELOG.md`, so keep both entries.
+
+**Open questions for the reviewer:**
+
+- **`spectral_diff`:** do you approve the change to default values?
+- **Neurofax recordings (200 Hz, C3/C4-average reference):** turn `REMOVE_ART` off, skip only the referential check (needs `referential-crash-fix`), or use Cz as the reference for that check? See decision 6.
+- **Flat-run threshold:** Python removes a flat run only above 0.1 × Fs (`>`, `art_per_channel:201`); MATLAB also removes one equal to it (`>=`, `remove_artefacts.m:242`). This matters only when 0.1 × Fs is a whole number, as at 200, 250, 500 and 1000 Hz. Which is intended? No branch changes it.
+- **Summary tables:** for per-channel features, `feats_median_ch` and `feats_median_all` use `median`, so one NaN gives NaN; `feat_st`, like MATLAB, uses `nanmedian`. Should the tables ignore NaN? See decision 10.
+- **BSI with unequal channels per side:** with one left and two or more right channels, `connectivity-crash-fix` uses the matched pair, while MATLAB's `X_right(ibandpass)` (`connectivity_features.m:150`) interleaves the right channels. Which is intended?
+
 ## Decisions needed
 
 1. **Tolerance:** what difference is acceptable per feature group, for summary and per-epoch values? (Tests use 1e-9 relative; the CI drift guard 1e-5.)
@@ -91,7 +113,7 @@ dependency and test changes.
 
 For amplitude, spectral, rEEG and FD, a channel-epoch with ≥ 50 % NaN is
 skipped. Connectivity applies that threshold to all channel-samples in the
-epoch together (`generate_all_features:246–249,314–315`).
+epoch together (`generate_all_features:244–248,314–315`).
 
 The returned summaries handle NaN differently. For amplitude, spectral, rEEG
 and FD, `feat_st` uses `np.nanmedian` over epochs, then channels (lines
