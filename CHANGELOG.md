@@ -23,7 +23,8 @@ non-integer rate ratios (e.g. 200 or 250 Hz), and when artefact removal is turne
   and a high-pass gave a low-pass. Ported from Brian Murphy's PyPI release 0.1.4 (26 Jul 2022),
   which was never on GitHub. Low-pass and band-stop filters are unchanged, and the default
   pipeline uses only the low-pass, so default results do not change
-  (`tests/test_filter_zerophase_type.py`).
+  (`tests/test_filter_zerophase_type.py`). A high-pass now needs an odd filter length: an even
+  `L_filt` raises `ValueError` (scipy's rule), where it used to return a low-pass.
 - pandas 3 (Copy-on-Write): `preprocessing_EEG.remove_artefacts` filters copies of the channels and
   keeps, explicitly, the original's in-place filling of pre-existing NaN in the DataFrames it is
   given (the cleaned output depends on it).

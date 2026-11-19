@@ -5,9 +5,12 @@ MATLAB filter_zerophase.m names the filter type it builds (fir1 'bandpass',
 pass_zero=True (keep 0 Hz), so a band-pass came out as a band-stop and a
 high-pass as a low-pass. Brian Murphy's PyPI release 0.1.4 (26 Jul 2022) named
 the type; that change was never on GitHub. These tests check that:
-- each type passes and blocks the right frequencies;
-- the low-pass and band-stop filters are exactly as before (the default
-  pipeline uses only the low-pass, so default results do not change).
+- the band-pass and high-pass filters pass and block the right frequencies;
+- the low-pass and band-stop filters give exactly the same output as before
+  (the default pipeline uses only the low-pass, so default results do not
+  change);
+- a high-pass with an even L_filt now stops with ValueError (firwin needs an
+  odd number of coefficients), where it used to return a low-pass.
 
 Synthetic sine waves only: no recordings are used.
 """
@@ -71,3 +74,9 @@ def test_band_stop_unchanged():
     x = sine(2) + sine(6) + sine(20)
     new = utils.filter_zerophase(x.copy(), FS, LP_fc=4, HP_fc=8, L_filt=L_FILT)
     np.testing.assert_array_equal(new, old_filter(x, [4 / (FS / 2), 8 / (FS / 2)]))
+
+
+def test_high_pass_with_even_length_raises():
+    """Before the fix this call returned a low-pass; now firwin refuses it."""
+    with pytest.raises(ValueError):
+        utils.filter_zerophase(sine(10), FS, HP_fc=1, L_filt=500)

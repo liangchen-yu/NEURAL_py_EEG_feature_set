@@ -454,7 +454,9 @@ def filter_zerophase(
     # default, pass_zero=True, keeps 0 Hz: right for low-pass and band-stop,
     # but it turned the band-pass into a band-stop and the high-pass into a
     # low-pass. The low-pass (the only type the default pipeline uses) and
-    # band-stop filters are unchanged.
+    # band-stop filters are unchanged. A high-pass now needs an odd L_filt:
+    # firwin refuses an even one (ValueError), where it used to give a
+    # low-pass without warning.
     if LP_fc != -1 and HP_fc != -1:
         if LP_fc > HP_fc:
             # band-pass
