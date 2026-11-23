@@ -7,8 +7,8 @@ Maintained fork (see README, "Maintenance"). With the same library versions, the
 identical to release 0.1.3 (commit 78c9425), except at the rates changed by the downsampling fix
 (odd multiples of 32 Hz above 64 Hz), for recordings that are not a whole number of seconds at
 non-integer rate ratios (e.g. 200 or 250 Hz), when artefact removal is turned off
-(`REMOVE_ART = 0` or `remove_art=False`), and for `spectral_diff` (see "Output changes");
-the tests in `tests/` check this.
+(`REMOVE_ART = 0` or `remove_art=False`), for `spectral_diff` (see "Output changes"), and for FD
+with three or more frequency bands or `method = 'katz'`; the tests in `tests/` check this.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit
@@ -33,7 +33,7 @@ the tests in `tests/` check this.
   The regression tests compare every other output with the original's reference values, and
   `spectral_diff` with the original plus this one-line fix (see "Added").
   `tests/test_spectral_diff_fix.py` shows that the fixed `spectral_diff` is right.
-
+  
 ### Changed
 - Readability pass on the fork's own changes (comments and layout only; results unchanged).
 - Package metadata moved from `setup.cfg` (removed) to the `[project]` table of `pyproject.toml`
@@ -79,6 +79,25 @@ the tests in `tests/` check this.
   (e.g. 1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at whole-number rates give
   identical results. `tests/test_downsample_rates.py` covers odd and whole-second lengths, all-NaN
   channels, a 64.5 Hz target rate and the inherited growth of NaN gaps.
+- `fd_features.main_fd` now matches MATLAB `fd_features.m`:
+  - Bands: each row of `freq_bands` is one band, using columns 0 and 1 as the cutoffs. Every
+    band is filtered from the original signal. Before, the band count was the array's number of
+    dimensions, so three or more bands gave only the first two values.
+  - Empty `freq_bands`: `[]` gives one value from the unfiltered signal (before: `IndexError`).
+  - One band as a nested list: `[[low, high]]` works (before: `IndexError`).
+  - Method: the name `'FD'` reads `params['method']`, `'higuchi'` or `'katz'`. Before, the
+    setting was never read and FD was always Higuchi. A missing or `None` `method` selects
+    Higuchi, as before; results can still differ from before where the band fix above applies
+    (e.g. 4 bands now give 4 values instead of 2). Any other value or type (including arrays,
+    lists and numbers) raises `ValueError`. `fd_katz` is called without `qmax`, as in MATLAB.
+  - Unchanged: the default settings (one 0.5-30 Hz band, Higuchi), a single `[low, high]` pair,
+    a flat list of more numbers (only the first two are used) and exactly two bands.
+  - Limitation: `generate_all_features` column naming (`get_feature_names`,
+    `add_feat_data_to_array`) still supports only a flat list or a list of two or more bands for
+    FD. A flat list is a `[low, high]` pair or a longer list such as `[0.5, 4, 30]`, which works
+    but uses only its first two values. It fails for `[[low, high]]` and `[]`, which only
+    `main_fd` accepts.
+  - Tests: `tests/test_fd_bands.py`.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original

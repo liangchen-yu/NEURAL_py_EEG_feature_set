@@ -127,20 +127,39 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
     Inputs:
         x          - epoch of EEG data (1-D array of N samples)
         fs         - sampling frequency (in Hz)
-        feat_name  - 'fd_higuchi' (default), 'fd_katz', or 'FD' (the name
-                     in FEATURE_SET_ALL, NEURAL_parameters.py), which means
-                     'fd_higuchi'
+        feat_name  - 'FD' (the name in FEATURE_SET_ALL, NEURAL_parameters.py)
+                     uses params['method']: 'higuchi' or 'katz' (missing
+                     or None means 'higuchi'); 'fd_higuchi' (default) or
+                     'fd_katz' choose directly
         params     - FD settings (dictionary); None or empty uses the NEURAL
-                     defaults. Reads 'freq_bands', 'FILTER_REPLACE_ARTEFACTS'
-                     and 'qmax' (kmax for fd_higuchi; ignored by fd_katz)
+                     defaults. Reads 'freq_bands', 'FILTER_REPLACE_ARTEFACTS',
+                     'qmax' (kmax, read only for fd_higuchi) and, for 'FD',
+                     'method'
 
     Outputs:
-        band_features  - fractal dimension for each frequency band (array)
+        band_features  - fractal dimension for each frequency band
+                         (one value if 'freq_bands' is empty)
 
-    Note: by default 'freq_bands' is one [low, high] pair (0.5-30 Hz), which
-    gives one value. The band count is taken from the array's ndim, so a
-    list of several bands gives only 2 values (its first 2 bands).
-    NaN samples are not removed: fd_higuchi skips them, fd_katz gives NaN.
+    Note: as in MATLAB fd_features.m, each row of 'freq_bands' is one band,
+    with column 0 as the low and column 1 as the high cutoff; a single
+    [low, high] pair (default 0.5-30 Hz) is one band. Every band is filtered
+    from the original x. Empty 'freq_bands' gives one value from the
+    unfiltered x.
+    main_fd accepts any of these shapes, but generate_all_features' column
+    naming (get_feature_names, add_feat_data_to_array) supports only a
+    flat list (a [low, high] pair, or a longer list such as [0.5, 4, 30],
+    which works but uses only its first two values) or a list of two or
+    more [low, high] bands; it fails for [[low, high]] (one band as a
+    nested list) and for [].
+    A missing or None params['method'] selects Higuchi, as main_fd did
+    before it read 'method'. Results can still differ from that older code
+    where the band handling changed (e.g. 4 bands now give 4 values, not 2).
+    'method' must otherwise be the string 'higuchi' or 'katz'; any other
+    value or type (array, list, number) raises ValueError (MATLAB's
+    otherwise-branch was not run, so it is not matched).
+    NaN samples are not removed: NaNs left after filtering are skipped by
+    fd_higuchi and make fd_katz return NaN; the 'zeros' and interpolation
+    modes fill gaps during filtering.
 
     Example:
         from NEURAL_py_EEG import utils
@@ -158,10 +177,6 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
     [2] MJ Katz, Fractals and the analysis of waveforms. Computers in Biology
     and Medicine, vol. 18, no. 3, pp. 145-156. 1988
     """
-    # params['method'] is never read, so 'FD' always means Higuchi.
-    if feat_name == "FD":
-        feat_name = "fd_higuchi"
-
     if params is None:
         params = NEURAL_parameters.NEURAL_parameters()
         if "FD" in params:
@@ -175,41 +190,49 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
         else:
             raise ValueError("No default parameters found")
 
-    frequency_bands = np.array(params["freq_bands"])
+    # As in MATLAB, the generic name 'FD' takes its method from the settings.
+    if feat_name == "FD":
+        # Missing or None means Higuchi, as before 'method' was read.
+        # Only None or a str: == on an array or list would not give a plain bool.
+        method = params.get("method")
+        if method is None or (isinstance(method, str) and method == "higuchi"):
+            feat_name = "fd_higuchi"
+        elif isinstance(method, str) and method == "katz":
+            feat_name = "fd_katz"
+        else:
+            raise ValueError(
+                "Unknown FD method: %r (use 'higuchi' or 'katz')" % (method,)
+            )
 
-    # ndim, not the number of bands: 1 for a single [low, high] pair, but 2 for
-    # any list of bands (see Note).
-    band_count = frequency_bands.ndim
-    if band_count == 0:
+    # One band per row, like MATLAB's size(freq_bands, 1): a flat list is one
+    # row, and only its first two numbers are used as cutoffs.
+    frequency_bands = np.atleast_2d(np.array(params["freq_bands"]))
+    band_count = frequency_bands.shape[0]
+    if frequency_bands.size == 0:
         band_count = 1
-
-    # Filters can fill gaps in place; the copy keeps the caller's x unchanged.
-    filter_input = x.copy()
 
     band_features = np.empty(band_count)
     for band_index in range(band_count):
-        # The filter API expects the upper cutoff before the lower cutoff.
-        if band_count == 1:
+        # Filters can fill NaN gaps in place, so each band starts from a fresh
+        # copy of x: bands stay independent and the caller's x is unchanged.
+        band_samples = x.copy()
+        if frequency_bands.size > 0:
+            low_cutoff = frequency_bands[band_index, 0]
+            high_cutoff = frequency_bands[band_index, 1]
+            # The filter API expects the upper cutoff before the lower cutoff.
             band_samples, ignored_nan_indices = utils.filter_butterworth_withnans(
-                filter_input,
+                band_samples,
                 fs,
-                frequency_bands[1],
-                frequency_bands[0],
-                5,
-                params["FILTER_REPLACE_ARTEFACTS"],
-            )
-        else:
-            band_samples, ignored_nan_indices = utils.filter_butterworth_withnans(
-                filter_input,
-                fs,
-                frequency_bands[band_index][1],
-                frequency_bands[band_index][0],
+                high_cutoff,
+                low_cutoff,
                 5,
                 params["FILTER_REPLACE_ARTEFACTS"],
             )
 
         try:
-            band_features[band_index] = eval(feat_name)(band_samples, params["qmax"])
+            # Only Higuchi takes kmax; Katz gets x alone (MATLAB line 71).
+            feature_args = (params["qmax"],) if feat_name == "fd_higuchi" else ()
+            band_features[band_index] = eval(feat_name)(band_samples, *feature_args)
         except:
             raise ValueError("Feature function not found: %s" % feat_name)
 
