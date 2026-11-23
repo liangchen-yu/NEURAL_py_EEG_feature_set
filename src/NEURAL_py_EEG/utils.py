@@ -442,24 +442,39 @@ def filter_zerophase(
     # either bandpass, low - pass, or high - pass
     # ---------------------------------------------------------------------
 
+    # The filter type is named explicitly, as in MATLAB filter_zerophase.m
+    # (fir1 'bandpass', 'stop', 'low', 'high') and in the PyPI release 0.1.4
+    # (Brian Murphy, 26 Jul 2022), which never reached GitHub. firwin's
+    # default, pass_zero=True, keeps 0 Hz: right for low-pass and band-stop,
+    # but it turned the band-pass into a band-stop and the high-pass into a
+    # low-pass. The low-pass (the only type the default pipeline uses) and
+    # band-stop filters are unchanged. A high-pass now needs an odd L_filt:
+    # firwin refuses an even one (ValueError), where it used to give a
+    # low-pass without warning.
     if LP_fc != -1 and HP_fc != -1:
         if LP_fc > HP_fc:
             # band-pass
             filt_passband = [HP_fc / (Fs / 2), LP_fc / (Fs / 2)]
-            b = signal.firwin(L_filt, filt_passband, window=win_type)
+            b = signal.firwin(
+                L_filt, filt_passband, window=win_type, pass_zero="bandpass"
+            )
         else:
             # or band-stop
             filt_passband = [LP_fc / (Fs / 2), HP_fc / (Fs / 2)]
-            b = signal.firwin(L_filt, filt_passband, window=win_type)
+            b = signal.firwin(
+                L_filt, filt_passband, window=win_type, pass_zero="bandstop"
+            )
 
     elif LP_fc != -1:
         filt_passband = LP_fc / (Fs / 2)
-        b = signal.firwin(L_filt, filt_passband, window=win_type)
+        b = signal.firwin(L_filt, filt_passband, window=win_type, pass_zero="lowpass")
 
     elif HP_fc != -1:
         L_filt = L_filt + 1
         filt_passband = HP_fc / (Fs / 2)
-        b = signal.firwin(L_filt - 1, filt_passband, window=win_type)
+        b = signal.firwin(
+            L_filt - 1, filt_passband, window=win_type, pass_zero="highpass"
+        )
 
     else:
         raise ValueError("Need to specify cutoff frequency")
