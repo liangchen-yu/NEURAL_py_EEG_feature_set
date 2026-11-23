@@ -128,8 +128,9 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
         x          - epoch of EEG data (1-D array of N samples)
         fs         - sampling frequency (in Hz)
         feat_name  - 'FD' (the name in FEATURE_SET_ALL, NEURAL_parameters.py)
-                     uses params['method']: 'higuchi' or 'katz';
-                     'fd_higuchi' (default) or 'fd_katz' choose directly
+                     uses params['method']: 'higuchi' or 'katz' (missing
+                     or None means 'higuchi'); 'fd_higuchi' (default) or
+                     'fd_katz' choose directly
         params     - FD settings (dictionary); None or empty uses the NEURAL
                      defaults. Reads 'freq_bands', 'FILTER_REPLACE_ARTEFACTS',
                      'qmax' (kmax, read only for fd_higuchi) and, for 'FD',
@@ -143,9 +144,19 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
     with column 0 as the low and column 1 as the high cutoff; a single
     [low, high] pair (default 0.5-30 Hz) is one band. Every band is filtered
     from the original x. Empty 'freq_bands' gives one value from the
-    unfiltered x; main_fd supports this, but generate_all_features' column
-    naming does not yet. An unknown params['method'] raises ValueError
-    (MATLAB's otherwise-branch was not run, so it is not matched).
+    unfiltered x.
+    main_fd accepts any of these shapes, but generate_all_features' column
+    naming (get_feature_names, add_feat_data_to_array) supports only a
+    flat list (a [low, high] pair, or a longer list such as [0.5, 4, 30],
+    which works but uses only its first two values) or a list of two or
+    more [low, high] bands; it fails for [[low, high]] (one band as a
+    nested list) and for [].
+    A missing or None params['method'] selects Higuchi, as main_fd did
+    before it read 'method'. Results can still differ from that older code
+    where the band handling changed (e.g. 4 bands now give 4 values, not 2).
+    'method' must otherwise be the string 'higuchi' or 'katz'; any other
+    value or type (array, list, number) raises ValueError (MATLAB's
+    otherwise-branch was not run, so it is not matched).
     NaN samples are not removed: NaNs left after filtering are skipped by
     fd_higuchi and make fd_katz return NaN; the 'zeros' and interpolation
     modes fill gaps during filtering.
@@ -181,14 +192,16 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
 
     # As in MATLAB, the generic name 'FD' takes its method from the settings.
     if feat_name == "FD":
+        # Missing or None means Higuchi, as before 'method' was read.
+        # Only None or a str: == on an array or list would not give a plain bool.
         method = params.get("method")
-        if method == "higuchi":
+        if method is None or (isinstance(method, str) and method == "higuchi"):
             feat_name = "fd_higuchi"
-        elif method == "katz":
+        elif isinstance(method, str) and method == "katz":
             feat_name = "fd_katz"
         else:
             raise ValueError(
-                "Unknown FD method: %s (use 'higuchi' or 'katz')" % method
+                "Unknown FD method: %r (use 'higuchi' or 'katz')" % (method,)
             )
 
     # One band per row, like MATLAB's size(freq_bands, 1): a flat list is one

@@ -120,9 +120,44 @@ def test_method_katz_does_not_need_qmax():
     np.testing.assert_array_equal(fd_features.main_fd(x, FS, "FD", params), [expected])
 
 
-def test_unknown_method_raises():
-    with pytest.raises(ValueError, match="wavelet"):
-        fd_features.main_fd(signal(), FS, "FD", fd_params(method="wavelet"))
+@pytest.mark.parametrize("missing", ["absent", None])
+def test_missing_method_is_higuchi_as_on_master(missing):
+    """Custom params without 'method' (or with None) worked on master, which
+    always used Higuchi for 'FD'; they must still give that exact result."""
+    x = signal()
+    params = fd_params()
+    if missing == "absent":
+        del params["method"]
+    else:
+        params["method"] = None
+    # master: 'FD' -> fd_higuchi(filtered 0.5-30 Hz, qmax)
+    expected = fd_features.fd_higuchi(
+        band_filtered(x, 0.5, 30, params["FILTER_REPLACE_ARTEFACTS"]), params["qmax"]
+    )
+    result = fd_features.main_fd(x, FS, "FD", params)
+    np.testing.assert_array_equal(result, [expected])
+    np.testing.assert_array_equal(result, fd_features.main_fd(x, FS, "FD", fd_params()))
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "wavelet",
+        "",
+        "Higuchi",
+        0,
+        # == on these is not a plain bool; they must not pass as a name.
+        np.array(["higuchi"]),
+        np.array(["katz"]),
+        ["higuchi"],
+        ["katz"],
+    ],
+    ids=["wavelet", "empty", "Higuchi", "zero", "array-higuchi", "array-katz",
+         "list-higuchi", "list-katz"],
+)
+def test_unknown_method_raises(method):
+    with pytest.raises(ValueError, match="Unknown FD method"):
+        fd_features.main_fd(signal(), FS, "FD", fd_params(method=method))
 
 
 def test_explicit_names_ignore_method():
