@@ -4,12 +4,12 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## In short
 
-- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs still equal the original's exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. The suite has 54 tests: these 28, 22 downsampling tests and 4 `REMOVE_ART` tests.
+- **Same results on one machine:** for everything the 28 regression and edge-case tests check with modern libraries, the outputs equal the reference values exactly (difference 0); the one window-type check against the 2020 environment differs by at most 1.6e-15. On master 6e7d343 every reference value was the original's, and the suite had 54 tests: these 28, 22 downsampling tests and 4 `REMOVE_ART` tests. On `fixes-combined`, `spectral_diff` differs from the original by design (MATLAB fix a279ddd, below) and is compared, also with difference 0, with the original plus only that one-line fix; every other output is still compared with the original itself. The suite there has 111 tests: those 54, 23 FD, 9 `filter_zerophase` type, 14 referential-check and 11 `spectral_diff` tests.
 - **Small differences between environments:** the original itself reportedly varies by up to about 3e-7 relative (about 7 significant figures) between library versions and between computers; artefact decisions and NaN positions did not change (reported). Two Windows CI jobs of one run, with identical pinned libraries and Python, drifted by 0 and 1.6e-7 (reported, 4 Nov), pointing to the runner machine rather than library versions (not yet confirmed; see [Run it on your PC](#run-it-on-your-pc)).
 - **Likely cause:** the synthetic experiment supports rounding sensitivity in the order-5 Butterworth band filters in `(b, a)` form. It does not establish the cause of the cross-machine differences.
 - **Original behaviour kept on purpose**, so results can be compared before any scientific change.
-- **Python porting gaps:** downsampling now matches MATLAB. Results change at odd multiples of 32 Hz above 64 Hz (e.g. 96, 160 and 480 Hz gave wrong output rates, labelled 64 Hz) and can change for recordings that are not a whole number of seconds at rates that are not multiples of 64 Hz (1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at other whole-number rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` is now honoured; its default of 1 keeps results unchanged. FD's `method` setting is unused; retained-channel preprocessing requires more than 80 Hz.
-- **Referential-check mismatch:** in a reported run of all 169 recordings of the public HIE dataset with the original code at default settings, the low-correlation check removed every bipolar channel in 50 of 96 recordings at 200 Hz and none of 73 at 256 Hz. Changing only the reference in software switched these removals on and off (see [Artefact detection](#artefact-detection) and decision 6). MATLAB lets users skip this check alone; in Python that currently fails whenever the electrode-coupling check runs.
+- **Python porting gaps:** downsampling now matches MATLAB. Results change at odd multiples of 32 Hz above 64 Hz (e.g. 96, 160 and 480 Hz gave wrong output rates, labelled 64 Hz) and can change for recordings that are not a whole number of seconds at rates that are not multiples of 64 Hz (1001 samples at 200 Hz gave 63.936 Hz). Whole-second recordings at other whole-number rates, including the tested 256 Hz, are unchanged. `REMOVE_ART` is now honoured; its default of 1 keeps results unchanged. Retained-channel preprocessing requires more than 80 Hz. On master 6e7d343, three further gaps remained, now fixed on `fixes-combined` to match MATLAB: `spectral_diff` lacked MATLAB fix a279ddd (default values now change by design: they can only increase or stay the same); FD's `method` setting was never read and the band count was the array's number of dimensions (`main_fd` now reads `method` and counts one band per row of `freq_bands`; defaults unchanged); and `utils.filter_zerophase` left firwin's filter type at its default, so band-pass and high-pass filters were wrong (the default pipeline uses only the low-pass, which is unchanged).
+- **Referential-check mismatch:** in a reported run of all 169 recordings of the public HIE dataset with the original code at default settings, the low-correlation check removed every bipolar channel in 50 of 96 recordings at 200 Hz and none of 73 at 256 Hz. Changing only the reference in software switched these removals on and off (see [Artefact detection](#artefact-detection) and decision 6). MATLAB lets users skip this check alone. In Python, on master 6e7d343, that failed whenever the electrode-coupling check ran; on `fixes-combined` it works (see [Skipping only the referential check](#skipping-only-the-referential-check)).
 - **Correlation:** the NEURAL paper and both implementations specify Pearson; the README table's "Spearman" was a documentation error, now corrected.
 
 ## Decisions needed
@@ -19,7 +19,7 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 3. **Filter form:** keep `(b, a)`, which matches both originals, or review SOS as a separate numerical change? The synthetic experiment recorded changes up to 5.7e-7 relative per epoch and 3.4e-9 in summaries. Keep the original references unchanged.
 4. **Downsampling:** the integer check and the resampling ratio now match MATLAB; confirm.
 5. **Supported data:** require more than 80 Hz? Which sample rates, recording lengths and reference montages should be supported and tested?
-6. **Artefact switch and reference montage:** confirm the original author's intended default and testing strategy. Keeping `REMOVE_ART = 1` applies the artefact checks; `0` skips them and leaves artefacts unremoved. In the synthetic C3/C4-average-reference probe, all eight bipolar channels became all-NaN with removal on and had data with it off. Should feature generation and artefact detection be tested separately? For recordings with a C3/C4-average reference, which handling is intended: (a) `REMOVE_ART = 0`, which skips all six checks; (b) skip only the low-correlation check, as MATLAB allows by calling `remove_artefacts` without referential data (in Python this currently fails whenever the electrode-coupling check runs; see [Skipping only the referential check](#skipping-only-the-referential-check)); or (c) re-reference before the check, for example to one recorded electrode or the average of all electrodes, which keeps the faulty-electrode check but can remove channels of its own? Which settings were used for the published HIE analyses?
+6. **Artefact switch and reference montage:** confirm the original author's intended default and testing strategy. Keeping `REMOVE_ART = 1` applies the artefact checks; `0` skips them and leaves artefacts unremoved. In the synthetic C3/C4-average-reference probe, all eight bipolar channels became all-NaN with removal on and had data with it off. Should feature generation and artefact detection be tested separately? For recordings with a C3/C4-average reference, which handling is intended: (a) `REMOVE_ART = 0`, which skips all six checks; (b) skip only the low-correlation check, as MATLAB allows by calling `remove_artefacts` without referential data (in Python this failed on master 6e7d343 whenever the electrode-coupling check ran, and works on `fixes-combined`; see [Skipping only the referential check](#skipping-only-the-referential-check)); or (c) re-reference before the check, for example to one recorded electrode or the average of all electrodes, which keeps the faulty-electrode check but can remove channels of its own? Which settings were used for the published HIE analyses?
 7. **Other inherited behaviour** (table below): fix or keep each item?
 8. **Versions:** support Python older than 3.14? Which libraries should be pinned exactly, and which given only a minimum?
 9. **IBI features:** keep them unsupported (they need a separate burst detector), or add and test the detector?
@@ -27,20 +27,24 @@ These notes are for reviewing this maintained version of NEURAL_py against the o
 
 ## What changed
 
-Across **26 commits**, only **four modules** in `src/` changed, mostly for pandas 3, SciPy and pyedflib compatibility.
-**Feature formulas**, filter designs and default parameters are unchanged.
+**On master (to 6e7d343):** across the **26 commits** from 78c9425 to f69a3c7 (the two later ones only change documentation), only **four modules** in `src/` changed, mostly for pandas 3, SciPy and pyedflib compatibility.
+At that commit, **feature formulas**, filter designs and default parameters were unchanged.
 The compatibility changes adapt array writes, indexing, window-function imports and EDF export; exact agreement on tested inputs does not guarantee every possible call.
 Later commits changed `preprocessing_EEG.py` again, to match MATLAB: the downsampling integer check and resampling ratio in `signal_downsample`, and the `REMOVE_ART` switch, now read by `main_preprocessing` (default unchanged).
 Package metadata moved from `setup.cfg` to `pyproject.toml`; `uv.lock` fixes every package version, and `.github/workflows/uv-drift.yml` runs the tests with it.
+
+**On `fixes-combined`:** five branches are merged on top of master: `readability` (comments and names in the fork's own changes; results unchanged), `spectral-diff-matlab-fix` (`spectral_features`: MATLAB fix a279ddd; default `spectral_diff` values change by design), `fd-matlab-match` (`fd_features.main_fd`: one band per row of `freq_bands`, and `'FD'` reads `params['method']`), `port-pypi-filter-fix` (`utils.filter_zerophase` names firwin's filter type, as MATLAB and the PyPI release 0.1.4 do) and `referential-crash-fix` (`preprocessing_EEG.remove_artefacts`: the coupling check's array is sized from the bipolar channels). `connectivity-crash-fix` is still pending, so the "Two channels" and "BSI with one matched left channel" rows below still describe `fixes-combined`. See CHANGELOG for each fix's effect on results.
 
 <details>
 <summary>Source changes, feature map and review context</summary>
 
 The comparison is against original NEURAL_py (BSD-3-Clause) at
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be).
-Source line numbers refer to f69a3c7 (later commits change only documentation
-and the readability of the fork's own changes): at that commit, `src/` was
+Source line numbers refer to f69a3c7: at that commit, `src/` was
 unchanged since 15e9aaa, and modules other than `preprocessing_EEG.py` since dd7235e.
+Later commits on master (to 6e7d343) change only documentation; on
+`fixes-combined`, the readability pass and the four fixes also change `src/`,
+so some line numbers there differ.
 MATLAB line numbers refer to qEEG_feature_set
 [206a89b](https://github.com/otoolej/qEEG_feature_set/tree/206a89b8943f029a32947b1715f75b62ab8d5c8a).
 **Reported** marks figures from GitHub Actions logs or earlier one-off checks
@@ -109,7 +113,7 @@ samples in every retained channel.
 </details>
 
 <details>
-<summary>All 26 commits on master since 78c9425, oldest first; no merges</summary>
+<summary>The 26 commits on master from 78c9425 to f69a3c7, oldest first; no merges</summary>
 
 | Commit | Subject |
 |---|---|
@@ -146,15 +150,26 @@ samples in every retained channel.
 
 - **Inputs:** two synthetic EDFs, “clean” and “artefacts”, each 300 s, 256 Hz and 9 electrodes; all 26 non-IBI features under tested settings; no real recordings opened.
 - **References:** the original source was SHA-256 verified; outputs include feature values and sampled EEG checks.
-- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below. The suite has 54 tests: these 28, 22 downsampling tests (21 sample-rate tests and 1 NaN-gap test) and 4 `REMOVE_ART` tests.
+- **Tests:** relative tolerance 1e-9, absolute 1e-12; the 28 regression and edge-case tests still show modern-reference differences of exactly 0, with a separate 2020 window exception below (on `fixes-combined`, `spectral_diff` is compared with the original plus the MATLAB a279ddd fix). On master 6e7d343 the suite had 54 tests: these 28, 22 downsampling tests (21 sample-rate tests and 1 NaN-gap test) and 4 `REMOVE_ART` tests. On `fixes-combined` it has 111: those 54, plus 23 in `test_fd_bands.py`, 9 in `test_filter_zerophase_type.py`, 14 in `test_referential_crash.py` and 11 in `test_spectral_diff_fix.py`.
 - **CI:** Windows and Ubuntu compare this maintained version and the original on the same runner, then guard drift from committed references, also requiring matching structures, NaN positions and discrete outputs. A second workflow runs the tests in the `uv.lock` environment, for information only.
 
 <details>
 <summary>Run results, inputs, reference provenance, tolerances and CI</summary>
 
-**Run for this update:** `uv run pytest` in the `uv.lock` environment
-(Windows 11, Python 3.14.7, numpy 2.5.4, SciPy 1.18.1, pandas 3.1.0, MNE
-1.13.2, matplotlib 3.11.2, pyedflib 0.1.42, pytest 9.2.0):
+**Run on `fixes-combined`:** `pytest` in the `uv.lock` environment (Windows
+11, Python 3.14.7, numpy 2.5.4, SciPy 1.18.1, pandas 3.1.0, MNE 1.13.2,
+matplotlib 3.11.2, pyedflib 0.1.42, pytest 9.2.0):
+
+```text
+111 passed in 57.71s
+```
+
+Every modern-reference group again had a largest difference of exactly 0
+(`spectral_diff` against the original plus the a279ddd fix); the 2020 window
+comparison had a largest relative difference of 1.43e-15 and absolute
+difference of 8.88e-16.
+
+**Run for the master 6e7d343 update:** `uv run pytest`, same environment:
 
 ```text
 54 passed in 50.72s
@@ -165,7 +180,7 @@ samples in every retained channel.
 tests existed, and `39 passed in 42.07s` after the downsampling fix (the 28
 plus 11 sample-rate tests).
 
-In this run, as in the earlier ones, every checked modern-reference group had
+In the 6e7d343 run, as in the earlier ones, every checked modern-reference group had
 a largest difference of exactly 0. The separate 2020 window comparison had a
 largest relative difference of 1.61e-15 and absolute difference of 8.88e-16.
 
@@ -258,7 +273,7 @@ These steps, from the repository's top folder, give results that can be compared
    uv run pytest
    ```
 
-   `uv sync --locked` creates `.venv` with the exact versions in `uv.lock` and stops if the lock file would change. `uv run pytest` runs the 54 tests and ends with a table of the largest differences from the committed references. On another machine some regression tests may fail the 1e-9 tolerance; that is the drift being measured, so please keep the output.
+   `uv sync --locked` creates `.venv` with the exact versions in `uv.lock` and stops if the lock file would change. `uv run pytest` runs the tests (54 on master 6e7d343, 111 on `fixes-combined`) and ends with a table of the largest differences from the committed references. On another machine some regression tests may fail the 1e-9 tolerance; that is the drift being measured, so please keep the output.
 3. Make reference values with the original NEURAL, as described in `tests/make_reference.py` (Windows commands; on macOS or Linux use `venv-original/bin/python` and forward slashes):
 
    ```text
@@ -277,7 +292,7 @@ These steps, from the repository's top folder, give results that can be compared
 
 | Comparison | What differs | Largest relative difference |
 |---|---|---|
-| This maintained version vs original, one machine and modern pinned libraries; original uses pandas 2.3.3 | Compatibility changes; this maintained version also tested with pandas 3 | Exactly 0 for checked modern-reference outputs |
+| This maintained version vs original, one machine and modern pinned libraries; original uses pandas 2.3.3 | Compatibility changes; this maintained version also tested with pandas 3 | Exactly 0 for checked modern-reference outputs (on `fixes-combined`, `spectral_diff` against the original plus the MATLAB a279ddd fix) |
 | Original: 2020 environment vs modern environment | Libraries and Python version | Up to 3e-7 (reported) |
 | Original: GitHub Windows runner vs reference PC | Machine, Windows version and Python patch version | 1.6e-7 (reported) |
 | Original: two Windows jobs of one CI run vs reference PC (4 Nov) | Between the two jobs, the runner machine (identical pinned libraries and Python 3.14.10) | 0 and 1.594e-7 (reported) |
@@ -477,11 +492,9 @@ do not quantify feature errors; the experiment above measures feature difference
 | Channel selection | Nonempty selections raise `KeyError`. |
 | Binary-input warning | Reversed check; warnings-as-errors can stop execution. |
 | All channels removed | Feature extraction raises `IndexError`; the reported open-HIE removals are explained below. |
-| Skipping the referential check | Passing no referential data skips it, as in MATLAB, but the coupling check, when it runs, then raises `IndexError` (details below). |
 | Mixed sample rates | MNE upsamples to one loaded rate; original channel rates unchecked. |
 | Low input rate | Retained-channel preprocessing needs > 80 Hz; feature bands need > 60 Hz; exceptions below. |
 | Correlation | Paper and code specify Pearson on squared envelopes; the README table's Spearman was a documentation error and is now corrected to Pearson. |
-| Settings | FD's `method` is unused. |
 | NaN gaps in resampling | At non-integer rate ratios, NaN gaps grow slightly during resampling (`resample_poly`'s filter), as in the original: a 0.5 s gap at 200 Hz becomes about 0.83 s at 64 Hz. |
 | Per-epoch output | `feats_per_epochs` holds only the last per-channel feature of one `generate_all_features` call. |
 | Two channels | Connectivity raises `IndexError` when exactly two bipolar channels with data remain. |
@@ -506,16 +519,44 @@ overrides it for one run. With removal off, no artefact check runs and the
 artefact report is `None`. The default of 1 keeps results identical.
 `tests/test_remove_art_switch.py` checks both settings.
 
+The following were in this table on master 6e7d343 and are fixed on
+`fixes-combined`:
+
+**Fixed: skipping the referential check.** On master 6e7d343, passing no
+referential data skipped the check, as in MATLAB, but the coupling check, when
+it ran, then raised `IndexError` (details below). The coupling check's array
+is now sized from the bipolar channels, as MATLAB does;
+`tests/test_referential_crash.py` checks this.
+
+**Fixed: FD settings.** On master 6e7d343, `params['FD']['method']` was never
+read (FD was always Higuchi), and `main_fd` counted bands by the array's number
+of dimensions, so three or more bands gave only two values. `main_fd` now reads
+`method` for the name `'FD'` and counts one band per row, as MATLAB
+`fd_features.m` does; the defaults give the same results.
+`tests/test_fd_bands.py` checks this.
+
+**Fixed: `spectral_diff` (output change by design).** On master 6e7d343,
+`spectral_diff` included one unfilled 0 in its median, as MATLAB did before
+commit a279ddd. It now uses only the N_epochs − 1 differences, so default
+values can increase; see CHANGELOG for the measured changes.
+
+**Fixed: `filter_zerophase` filter type.** On master 6e7d343, firwin's default
+filter type turned band-pass filters into band-stop and high-pass into
+low-pass. The type is now named, as in MATLAB; the low-pass used by the
+default pipeline is unchanged. A high-pass whose filter length, as used, is
+even now raises `ValueError`.
+
 <details>
 <summary>Code locations, inherited effects and probe results</summary>
 
 This maintained version retains these issues so it can be compared with the original before
-scientific changes. This is not evidence that the behaviours are desirable.
+scientific changes (except rows marked as fixed on `fixes-combined`). This is not evidence
+that the behaviours are desirable.
 Code inspection checked every row. Marked synthetic probes reran with the
 original on pandas 2.3.3 and this maintained version on pandas 3.0.2. The
 per-epoch output, two-channel, epoch-table and IBI-on-Windows rows were
-probed with this maintained version only (`uv.lock` environment, pandas
-3.1.0); their code is unchanged from 78c9425. This correction reran the BSI
+probed with this maintained version only (master, `uv.lock` environment, pandas
+3.1.0); at that commit their code was unchanged from 78c9425. This correction reran the BSI
 layout and epoch-count probes in that maintained environment. Requiring more than 80 Hz
 does not establish that every rate is supported. The length-based resampling ratio described below is now fixed.
 
@@ -527,7 +568,7 @@ does not establish that every rate is supported. The length-based resampling rat
 | Nonempty `channel_names=[...]` selection fails with `KeyError` | `generate_all_features:163–173`, error at 172 | Probe: matching, missing and all channel names fail. Select DataFrame columns before calling the function instead. | Fix or keep? |
 | `len_cont_zeros` warns “Must be a binary signal” when input is binary | `utils.len_cont_zeros:697` | Probe confirms the reversed check. It emits `DeprecationWarning`, normally hidden by Python; tests suppress this message. It does not change numerical outputs, but warning-as-error settings can stop the call. | Fix or keep? |
 | All channels removed: feature extraction raises `IndexError: tuple index out of range` | `generate_all_features:175–184` drops all-NaN channels; `add_feat_data_to_array:496` fails | Probes: all-NaN channels, and independent electrode noise that removes all 8 bipolar channels. The reported open-HIE run found the low-correlation check removed all bipolar channels in 50 of 96 recordings at 200 Hz and 0 of 73 at 256 Hz. See the reference-montage explanation under Artefact detection. | Review the referential check and define the empty-output behaviour. |
-| Without referential data, the coupling check fails | `remove_artefacts:307` skips the referential check when `data_ref` is empty, but line 362 sizes `x_filt` from `data_ref.shape`; when the coupling check runs (more than four remaining bipolar channels and at least two in each hemisphere, lines 356–359), the loop fails at line 369 | Probes with this maintained version only (pandas 3.0.5 and 3.1.0; synthetic, 60 s, 256 Hz): with eight bipolar channels, `IndexError: index 0 is out of bounds for axis 0 with size 0` at line 369, while the same input with referential data completes; with five channels, a 3 + 2 hemisphere split failed and a 4 + 1 split completed. MATLAB `remove_artefacts.m` skips the check at line 65 and sizes its array as `zeros(N_channels,N)` at line 111 (206a89b). The default pipeline always passes referential data, so it is unaffected. | Fix if option (b) of decision 6 is chosen? |
+| Without referential data, the coupling check failed (master 6e7d343; fixed on `fixes-combined`) | `remove_artefacts:307` skips the referential check when `data_ref` is empty, but line 362 sized `x_filt` from `data_ref.shape`; when the coupling check ran (more than four remaining bipolar channels and at least two in each hemisphere, lines 356–359), the loop failed at line 369 | Probes on master with this maintained version only (pandas 3.0.5 and 3.1.0; synthetic, 60 s, 256 Hz): with eight bipolar channels, `IndexError: index 0 is out of bounds for axis 0 with size 0` at line 369, while the same input with referential data completes; with five channels, a 3 + 2 hemisphere split failed and a 4 + 1 split completed. MATLAB `remove_artefacts.m` skips the check at line 65 and sizes its array as `zeros(N_channels,N)` at line 111 (206a89b). The default pipeline always passes referential data, so it is unaffected. | Fixed on `fixes-combined` (5fde433): `x_filt` is sized `[N_channels, N]`, as in MATLAB; `tests/test_referential_crash.py`. |
 | One loaded sample rate is used for the file | `load_edf_EEG_file:61–62`; `main_preprocessing:552` takes `ch_fs[0]` | `ch_fs` repeats MNE’s `info["sfreq"]`. MNE [documents upsampling mixed-rate signals to the highest loaded rate](https://mne.tools/stable/generated/mne.io.read_raw_edf.html). This code does not check each EEG channel’s original rate. | Fix or keep? |
 | Default retained-channel preprocessing requires Fs > 80 Hz | `art_per_channel:161` uses a fixed 40 Hz upper cutoff | Probes at 40, 60, 64 and 80 Hz fail with an invalid Butterworth critical frequency; 81 Hz completes. If every channel is removed first, that filter is skipped: a 64 Hz probe returned all-NaN data. Feature bands reaching 30 Hz separately need Fs > 60 Hz. Intended post-downsampling rate is 64 Hz. | Define and test supported rates? |
 | `feats_per_epochs` holds only the last per-channel feature of one call | `generate_all_features:235–237` re-creates it for each amplitude, spectral, rEEG or FD feature (filled at 267, returned at 358); connectivity and IBI never set it | Probe: for `['amplitude_SD', 'rEEG_mean', 'connectivity_BSI']` it equals the `rEEG_mean`-only result (8 × 9 × 4); with only connectivity features it is an empty array. Summaries cover every feature. `tests/neural_outputs.compute_features` stores it for the last per-channel feature only. | Fix or keep? |
@@ -577,7 +618,7 @@ checks both cases and a 64.5 Hz target rate.
 | Behaviour | Where | Effect | Decision |
 |---|---|---|---|
 | Pearson is specified; the README table said Spearman | `connectivity_features.connectivity_corr:523–526`; NEURAL paper, section 4, eq. 21 and Table B.3 | Both Python and MATLAB use Pearson on squared Hilbert envelopes, `abs(hilbert(x)) ** 2`. The README table's Spearman was a documentation error and is now corrected to Pearson. | Corrected; no statistic decision is needed. |
-| `params['FD']['method']` (“either 'higuchi' or 'katz'”) is never read | `fd_features.main_fd:135–136` | Through `generate_all_features`, “FD” always maps to Higuchi. | Implement or remove/document setting? |
+| `params['FD']['method']` (“either 'higuchi' or 'katz'”) was never read (master 6e7d343) | `fd_features.main_fd:135–136` (f69a3c7) | On master, through `generate_all_features`, “FD” always mapped to Higuchi. | Fixed on `fixes-combined`: `main_fd` reads `method` for `'FD'` (missing or `None` means Higuchi), as MATLAB does; `tests/test_fd_bands.py`. |
 
 [MATLAB also uses Pearson](https://github.com/otoolej/qEEG_feature_set/blob/206a89b8943f029a32947b1715f75b62ab8d5c8a/connectivity_features/connectivity_features.m#L338-L341).
 The [NEURAL paper](https://arxiv.org/abs/1704.05694), section 4, eq. 21 and
@@ -743,14 +784,16 @@ MATLAB `remove_artefacts.m` runs the referential check only when referential
 data are passed (line 65, 206a89b), so `remove_artefacts(data,
 ch_labels, Fs)` skips it and keeps the coupling and per-channel checks. The
 Python function also skips the check when `data_ref` is empty
-(`remove_artefacts:307`), but the coupling check sizes its array from
-`data_ref` (line 362) instead of the number of bipolar channels, as MATLAB does
-(`zeros(N_channels,N)`, line 111). Whenever the coupling check runs (more than
-four remaining bipolar channels and at least two in each hemisphere,
-`remove_artefacts:356–359`), it then fails; otherwise the call completes (see
-the inherited-behaviour table). The
-default pipeline always passes referential data and is unaffected. This is not
-changed in this version; see decision 6.
+(`remove_artefacts:307`). On master 6e7d343, the coupling check sized its array
+from `data_ref` (line 362) instead of the number of bipolar channels, as MATLAB
+does (`zeros(N_channels,N)`, line 111). Whenever the coupling check ran (more
+than four remaining bipolar channels and at least two in each hemisphere,
+`remove_artefacts:356–359`), it then failed; otherwise the call completed (see
+the inherited-behaviour table). On `fixes-combined` the array is sized from the
+bipolar channels, so option (b) of decision 6 works in Python; results of
+calls that previously completed are unchanged (`tests/test_referential_crash.py`).
+The default pipeline always passes referential data and is unaffected. Which
+handling to recommend for C3/C4-average-reference recordings is still decision 6.
 
 ## Not covered yet / planned work
 
@@ -759,7 +802,7 @@ changed in this version; see decision 6.
 - IBI/burst features.
 - Feature comparisons on real recordings; aggregate open-HIE removal results are reported above.
 - macOS.
-- Non-default settings, except the three tested window types and `REMOVE_ART = 0`, which is now tested.
+- Non-default settings, except the three tested window types and `REMOVE_ART = 0`, which is now tested. On `fixes-combined`, the FD band layouts and `method` values, the `filter_zerophase` filter types and `remove_artefacts` without referential data are also tested.
 
 **Completed / proposed:**
 
@@ -769,5 +812,6 @@ changed in this version; see decision 6.
 - Proposed: log the runner's CPU in CI, to test the machine explanation of the Windows drift.
 - Proposed: reference values from three machines ([Run it on your PC](#run-it-on-your-pc)) and, if possible, a MATLAB run on the synthetic files.
 - Proposed: feature-output comparisons on public real recordings.
-- Proposed: decide how to handle C3/C4-average-reference recordings (decision 6), and fix the coupling-check array size if option (b) is chosen.
+- Completed on `fixes-combined`: the coupling-check array size, so option (b) of decision 6 works in Python.
+- Proposed: decide how to handle C3/C4-average-reference recordings (decision 6).
 - Proposed: feature-code readability improvements after review.

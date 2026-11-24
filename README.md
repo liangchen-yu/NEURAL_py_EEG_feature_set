@@ -262,14 +262,29 @@ Ireland
 
 ## Maintenance
 
-This maintained version keeps NEURAL_py working with current Python libraries. Regression
-tests show that it gives the same numbers as the original code (commit
+This maintained version keeps NEURAL_py working with current Python libraries and fixes a few
+places where the Python port did not do what MATLAB NEURAL does. Regression tests compare it with
+the original code (commit
 [78c9425](https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/commit/78c94258e4a3e6504e469f418443c78926e1a6be)).
-No algorithm or default parameter was changed. Results differ from the original only at the rates
-changed by the downsampling fix, for recordings that are not a whole number of seconds at
-non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the ratio of the two rates, as in
-MATLAB, exact for whole-number rates), or
-with artefact removal turned off (`REMOVE_ART = 0` or `remove_art=False`).
+No default parameter was changed. Results differ from the original only:
+
+- for `spectral_diff`, by design: it includes the fix of MATLAB commit a279ddd (2020-04-23),
+  which the Python port never received, so default `spectral_diff` values change (they can only
+  increase or stay the same; see CHANGELOG). The tests compare it with the original plus only
+  that one-line fix;
+- at the rates changed by the downsampling fix, and for recordings that are not a whole number
+  of seconds at non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the ratio of the
+  two rates, as in MATLAB, exact for whole-number rates);
+- with artefact removal turned off (`REMOVE_ART = 0` or `remove_art=False`);
+- for FD with three or more frequency bands or `params['FD']['method'] = 'katz'`: `main_fd`
+  now counts one band per row of `freq_bands` and reads `method`, as in MATLAB. Called
+  directly, it also accepts the empty `[]` and single-row `[[low, high]]` band layouts, which
+  raised `IndexError` before;
+- for band-pass and high-pass filters built by `utils.filter_zerophase`, which now names the
+  filter type for `scipy.signal.firwin` (the default pipeline uses only its low-pass).
+
+Calling `preprocessing_EEG.remove_artefacts` without referential data no longer fails when the
+electrode-coupling check runs.
 
 Notes for reviewers (changes, checks, numerical differences, open questions): [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md).
 
@@ -281,7 +296,9 @@ run with the same library versions on the same computer:
 - the default pipeline: EDF file → `preprocessing_EEG.main_preprocessing` →
   `generate_all_features`, for all 26 non-IBI features (summary, per-epoch and
   per-channel values), the artefact report and the removed channels, on a
-  clean and an artefact-laden synthetic EDF file;
+  clean and an artefact-laden synthetic EDF file. `spectral_diff` is compared
+  with the original plus the MATLAB a279ddd fix (see above), every other
+  value with the original itself;
 - data that already contain NaN when given to `remove_artefacts`: the
   artefact report, every feature's summary values (one per frequency band;
   per-channel and per-epoch values are not stored for this case), sampled
@@ -355,6 +372,25 @@ runs on Windows and Ubuntu.
   removed them from `scipy.signal` (same functions, same values).
 - `utils.py`: a docstring now writes `'$\\mu$V'` instead of `'$\mu$V'` (the
   same text), because `\m` is an invalid escape sequence (`SyntaxWarning`).
+- `spectral_features`: `spectral_diff` takes the median of the N_epochs - 1
+  window-to-window differences, as MATLAB does since commit a279ddd; the
+  original also included one unfilled 0 (`tests/test_spectral_diff_fix.py`).
+- `fd_features.main_fd`: one band per row of `freq_bands`, each filtered from
+  the original signal, and the generic name `'FD'` reads `params['method']`
+  (`'higuchi'`, the default, or `'katz'`), as MATLAB `fd_features.m` does.
+  Before, the band count was the array's number of dimensions and `method`
+  was never read (`tests/test_fd_bands.py`).
+- `utils.filter_zerophase`: names the filter type (`pass_zero`) for
+  `scipy.signal.firwin`, as MATLAB does and as the original's PyPI release
+  0.1.4 did; before, a band-pass gave a band-stop and a high-pass a low-pass.
+  A high-pass whose filter length, as used, is even now raises `ValueError`
+  (`tests/test_filter_zerophase_type.py`).
+- `preprocessing_EEG.remove_artefacts`: the electrode-coupling check sizes its
+  work array from the bipolar channels, as MATLAB does, so calling it without
+  referential data no longer fails with `IndexError`
+  (`tests/test_referential_crash.py`).
+- The fork's own comments and code layout were tidied for readability
+  (results unchanged).
 - `pyproject.toml`: the package metadata, moved here from `setup.cfg` (now
   removed). The dependencies are declared (none were before), with the oldest
   tested versions as lower bounds and `requires-python >=3.14`.
@@ -390,7 +426,7 @@ Windows this needs the Microsoft C++ Build Tools, on Linux a C compiler.
 
     uv run pytest
 
-(with pip: `python -m pytest`). This takes about 50 seconds. pytest first shows which NEURAL and library
+(with pip: `python -m pytest`). This takes about a minute. pytest first shows which NEURAL and library
 versions it uses (and stops if it would test any copy of NEURAL other than
 this folder's `src/`); at the end it prints the largest difference from the
 reference values for each group.
@@ -542,8 +578,9 @@ pandas 2.3.3 and pandas 3)
   [docs/REVIEW_NOTES.md](docs/REVIEW_NOTES.md#original-behaviour-kept-on-purpose):
   preprocessing fails at sample rates of 80 Hz or below (unless every channel
   has already been removed as artefact); if all
-  channels are removed, feature extraction fails with an `IndexError`; MNE
-  upsamples files with mixed sample rates to the highest loaded rate; and one
-  setting, `params['FD']['method']`, is never read.
+  channels are removed, feature extraction fails with an `IndexError`; and MNE
+  upsamples files with mixed sample rates to the highest loaded rate.
   (The original also downsampled some rates, such as 96, 160 and 480 Hz, to
-  the wrong rate while labelling them 64 Hz; this is fixed to match MATLAB.)
+  the wrong rate while labelling them 64 Hz, never read
+  `params['FD']['method']`, and failed without referential data when the
+  electrode-coupling check ran; these are fixed to match MATLAB.)
