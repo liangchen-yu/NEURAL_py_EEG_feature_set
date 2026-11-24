@@ -12,8 +12,9 @@ this repository's NEURAL with reference values made by the ORIGINAL NEURAL
 
 The inputs and steps are in tests/edge_cases.py; tests/make_reference.py
 made the reference files. spectral_diff is compared with the values of the
-original plus the MATLAB fix a279ddd, stored in the same files
-(neural_outputs.with_matlab_fix).
+original plus the MATLAB fix a279ddd, and amplitude_skew and
+amplitude_kurtosis with the values of the original plus the definitions of
+neural_eeg_features 0.6.1, stored in the same files (neural_outputs.with_fixes).
 """
 import json
 from pathlib import Path
@@ -33,10 +34,10 @@ pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
 
 def load(name):
-    """A reference file with the MATLAB fix, without the 7 features removed to
-    match neural_eeg_features 0.6.1 (the files still hold them)."""
+    """A reference file with its fix sections, without the 7 features removed
+    to match neural_eeg_features 0.6.1 (the files still hold them)."""
     return neural_outputs.without_removed_features(
-        neural_outputs.with_matlab_fix(json.loads((DATA / name).read_text(encoding="utf-8"))))
+        neural_outputs.with_fixes(json.loads((DATA / name).read_text(encoding="utf-8"))))
 
 
 @pytest.fixture(scope="module")

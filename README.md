@@ -114,8 +114,8 @@ in more detail:
 | spectral\_diff             | difference between consecutive short-time spectral estimates                  | yes |
 | spectral\_edge\_frequency  | cut-off frequency (fc): 95% of spectral power contained between 0.5 and fc Hz | no  |
 | FD                         | fractal dimension                                                             | yes |
-| amplitude\_skew            | time-domain signal: skewness (absolute value)                                 | yes |
-| amplitude\_kurtosis        | time-domain signal: kurtosis                                                  | yes |
+| amplitude\_skew            | time-domain signal: skewness (absolute value, bias-corrected)                 | yes |
+| amplitude\_kurtosis        | time-domain signal: kurtosis (Pearson, bias-corrected)                        | yes |
 | amplitude\_env\_mean       | envelope: mean value                                                          | yes |
 | amplitude\_env\_SD         | envelope: standard deviation (SD)                                             | yes |
 | connectivity\_BSI          | brain symmetry index (see Van Putten 2007)                                    | yes |
@@ -271,6 +271,13 @@ No default parameter was changed. Results differ from the original only:
   which the Python port never received, so default `spectral_diff` values change (they can only
   increase or stay the same; see CHANGELOG). The tests compare it with the original plus only
   that one-line fix;
+- to match neural_eeg_features 0.6.1 (see CHANGELOG and
+  `docs/CHANGES_vs_neural_eeg_features_0.6.1.md`): seven features are removed, and
+  `amplitude_skew` and `amplitude_kurtosis` are bias-corrected. In the test data every value
+  rose slightly (skewness +0.04-0.06 %, kurtosis +0.04-0.16 %). The skewness magnitude always
+  increases with the correction (unless it is 0); the kurtosis usually does for EEG-like data
+  but can decrease for very flat signals. The tests compare these two with the original plus
+  only the reference package's definitions;
 - at the rates changed by the downsampling fix, and for recordings that are not a whole number
   of seconds at non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the ratio of the
   two rates, as in MATLAB, exact for whole-number rates);
@@ -298,8 +305,9 @@ run with the same library versions on the same computer:
   removed to match neural_eeg_features 0.6.1, which the tests skip), the
   artefact report and the removed channels, on a
   clean and an artefact-laden synthetic EDF file. `spectral_diff` is compared
-  with the original plus the MATLAB a279ddd fix (see above), every other
-  value with the original itself;
+  with the original plus the MATLAB a279ddd fix, `amplitude_skew` and
+  `amplitude_kurtosis` with the original plus the neural_eeg_features 0.6.1
+  definitions (see above), every other value with the original itself;
 - data that already contain NaN when given to `remove_artefacts`: the
   artefact report, every feature's summary values (one per frequency band;
   per-channel and per-epoch values are not stored for this case), sampled
@@ -451,7 +459,11 @@ reference values for each group.
   the old window functions still exist. The script's header lists the exact
   commands. `spectral_diff` is compared with values the same run makes with
   the original plus only the one-line fix of MATLAB commit a279ddd
-  (2020-04-23), which this repository includes (see CHANGELOG).
+  (2020-04-23), which this repository includes (see CHANGELOG);
+  `amplitude_skew` and `amplitude_kurtosis` with values the same run makes
+  with the original plus only the bias-corrected definitions of
+  neural_eeg_features 0.6.1 (not in the window reference, which has no
+  amplitude features).
 - Comparison: the tests check every stored value, allowing a relative
   difference of 1e-9 (absolute 1e-12) so that they can also run with other
   library versions; NaN must be NaN in both, and counts, positions and text

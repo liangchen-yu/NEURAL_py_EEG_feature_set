@@ -7,7 +7,8 @@
     "edf_export": "utils.save_pd_as_edf: what the written files contain, and the caller's DataFrame afterwards (the original also set its NaN to 0). pyedflib 0.1.41+ refuses the original's header key 'sample_rate', so while making this reference the key was renamed to 'sample_frequency' (same meaning) on its way into pyedflib.",
     "fingerprint": "Per column: NaN stretches as [first, last + 1], number of +inf and -inf, sum and sum of squares of the finite values, min, max, and every 997th sample.",
     "null": "null means NaN (not a number).",
-    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values."
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values.",
+    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values."
   },
   "made_with": {
     "python": "3.14.7",
@@ -724,6 +725,20 @@
     "inf_line": {
       "features": {
         "spectral_diff": [0.008750387304486722,0.023480753399706598,0.01228248205217903,0.014118810901275758]
+      }
+    }
+  },
+  "with_neural_eeg_features_0.6.1_moments": {
+    "nan_input": {
+      "features": {
+        "amplitude_skew": [0.05510809112641038,0.003916067610643827,0.002771436706750724,0.03265347243771602],
+        "amplitude_kurtosis": [3.2908101454115233,3.017158050482723,3.30049695770077,3.1840581059903714]
+      }
+    },
+    "inf_line": {
+      "features": {
+        "amplitude_skew": [0.07503486564881451,0.005201046230778792,0.002992565216427671,0.034340269790506334],
+        "amplitude_kurtosis": [3.3122718095688044,2.939334941255482,3.333603090108625,3.2559138127690437]
       }
     }
   }

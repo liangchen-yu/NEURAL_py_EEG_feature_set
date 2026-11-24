@@ -39,7 +39,22 @@ Each file also has a section "with_matlab_fix_a279ddd": the spectral_diff
 values of the original with only the one-line fix of MATLAB commit a279ddd
 (2020-04-23) applied in memory, made in the same run and environment. This
 repository includes that fix, so the tests compare spectral_diff with these
-values (see neural_outputs.with_matlab_fix).
+values (see neural_outputs.with_fixes).
+
+The main, edge and inputs files also have a section
+"with_neural_eeg_features_0.6.1_moments": the amplitude_skew and
+amplitude_kurtosis values of the original with only those two functions
+replaced, in memory, by the definitions of neural_eeg_features 0.6.1
+(bias-corrected; see with_neural_eeg_features_moments). This repository uses
+those definitions, so the tests compare the two features with these values.
+The windows file has no amplitude features, so it has no such section.
+
+neural_outputs.with_fixes applies these sections in order: first the MATLAB
+spectral_diff fix (with_matlab_fix_a279ddd), then the 0.6.1 moments section.
+Every other feature is compared with the original NEURAL's output. (The
+"about" texts ABOUT_FIX and ABOUT_MOMENTS are written into the reference
+files; changing them means remaking the files, as the drift guard requires
+the committed and runner-made texts to be equal.)
 
 GitHub Actions runs "main edge inputs" with the original code on each runner.
 The tests then compare the fork with those same-machine values, while a
@@ -93,6 +108,14 @@ ABOUT_FIX = ("spectral_diff values from the original NEURAL with only the one-li
              "np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository "
              "includes that fix, so the tests compare its spectral_diff with these values.")
 
+ABOUT_MOMENTS = ("amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two "
+                 "functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected "
+                 "skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, "
+                 "scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than "
+                 "3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest "
+                 "of this file. This repository uses these definitions, so the tests compare the two features "
+                 "with these values.")
+
 ABOUT = {
     "what": "Reference values for tests/test_regression.py: the outputs of the original NEURAL "
             "(see made_with) for one synthetic EDF file (see input). Made by tests/make_reference.py.",
@@ -108,6 +131,7 @@ ABOUT = {
                 "connectivity features, which compare pairs of channels.",
     "null": "null means NaN (not a number), e.g. an epoch NEURAL skipped because it was mostly artefact.",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
+    neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
 }
 
 ABOUT_EDGE = {
@@ -129,6 +153,7 @@ ABOUT_EDGE = {
                    "of squares of the finite values, min, max, and every 997th sample.",
     "null": "null means NaN (not a number).",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
+    neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
 }
 
 ABOUT_INPUTS = {
@@ -145,6 +170,7 @@ ABOUT_INPUTS = {
                  "arrays (as pandas 3 gives) and expect the same values. inputs_unchanged: the input arrays "
                  "were left unchanged.",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
+    neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
 }
 
 ABOUT_WINDOWS = {
@@ -250,7 +276,63 @@ def with_matlab_fix_a279ddd():
 def fix_section(make):
     """make() run again with the MATLAB fix; only its spectral_diff values are kept."""
     with with_matlab_fix_a279ddd():
-        return neural_outputs.only_fixed_feature(make())
+        return neural_outputs.only_features(make(), (neural_outputs.FIXED_FEATURE,))
+
+
+def finite_varying(data):
+    """neural_eeg_features 0.6.1 (amplitude.py): the finite values, or None if
+    they are empty or constant (range not above eps * max(1, max |value|))."""
+    values = np.asarray(data, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0 or not np.ptp(values) > np.finfo(float).eps * max(1, np.max(np.abs(values))):
+        return None
+    return values
+
+
+def skew_neural_eeg_features(data):
+    """Absolute bias-corrected skewness; NaN for fewer than 3 values."""
+    from scipy import stats
+
+    values = finite_varying(data)
+    if values is None or values.size < 3:
+        return np.nan
+    return float(abs(stats.skew(values, bias=False)))
+
+
+def kurtosis_neural_eeg_features(data):
+    """Bias-corrected Pearson kurtosis; NaN for fewer than 4 values."""
+    from scipy import stats
+
+    values = finite_varying(data)
+    if values is None or values.size < 4:
+        return np.nan
+    return float(stats.kurtosis(values, fisher=False, bias=False))
+
+
+@contextlib.contextmanager
+def with_neural_eeg_features_moments():
+    """The original NEURAL with only amplitude_skew and amplitude_kurtosis
+    replaced, in memory, by the definitions of neural_eeg_features 0.6.1
+    (written out above, independently of this repository's code). The
+    installed files are not changed."""
+    from NEURAL_py_EEG import amplitude_features
+
+    originals = {name: getattr(amplitude_features, name) for name in neural_outputs.MOMENTS_FEATURES}
+    # main_amplitude looks the feature function up in the module when it is called.
+    amplitude_features.amplitude_skew = skew_neural_eeg_features
+    amplitude_features.amplitude_kurtosis = kurtosis_neural_eeg_features
+    try:
+        yield
+    finally:
+        for name, function in originals.items():
+            setattr(amplitude_features, name, function)
+
+
+def moments_section(make):
+    """make() run again with the neural_eeg_features 0.6.1 skewness and
+    kurtosis; only their values are kept."""
+    with with_neural_eeg_features_moments():
+        return neural_outputs.only_features(make(), neural_outputs.MOMENTS_FEATURES)
 
 
 def write_json(value, folder, name):
@@ -308,6 +390,9 @@ def make_main_reference(case, features, folder):
         "features": one_by_one,
         neural_outputs.FIX_SECTION: fix_section(lambda: {"features": neural_outputs.compute_features(
             data, [neural_outputs.FIXED_FEATURE])}),
+        neural_outputs.MOMENTS_SECTION: moments_section(lambda: {"features": {
+            feature: neural_outputs.compute_features(data, [feature])[feature]
+            for feature in neural_outputs.MOMENTS_FEATURES}}),
     }
 
 
@@ -366,6 +451,8 @@ def make_edge(output):
         reference["edf_export"] = edge_cases.export_results(folder)
     reference[neural_outputs.FIX_SECTION] = fix_section(lambda: {
         "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
+    reference[neural_outputs.MOMENTS_SECTION] = moments_section(lambda: {
+        "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     print("edge cases: NaN artefact report %s; real +/-inf input: %s"
           % (reference["nan_input"]["artefact_report"]["percent_removed_worst_channel"], reference["inf_input"]))
     write_json(reference, output, "reference_edge_cases.json")
@@ -378,7 +465,9 @@ def make_inputs(output):
                  "made_with": dict(made_with(), neural_sha256_verified=True),
                  "index_types": edge_cases.index_type_results(),
                  "read_only": edge_cases.read_only_results(read_only=False),
-                 neural_outputs.FIX_SECTION: fix_section(lambda: {"index_types": edge_cases.index_type_results()})}
+                 neural_outputs.FIX_SECTION: fix_section(lambda: {"index_types": edge_cases.index_type_results()}),
+                 neural_outputs.MOMENTS_SECTION: moments_section(
+                     lambda: {"index_types": edge_cases.index_type_results()})}
     write_json(reference, output, "reference_input_types.json")
 
 

@@ -12,9 +12,10 @@ with three or more frequency bands or `method = 'katz'` (and `main_fd`, called d
 accepts the empty `[]` and single-row `[[low, high]]` band layouts, which raised `IndexError`
 before), for band-pass and high-pass filters
 built by `utils.filter_zerophase` (not used by the default pipeline), and for two connectivity
-edge cases (see the `connectivity_features` entry); the tests in `tests/` check this. Seven
-features were removed (see "Changes to match neural_eeg_features 0.6.1"); the remaining ones
-are unchanged.
+edge cases (see the `connectivity_features` entry); the tests in `tests/` check this. To match
+neural_eeg_features 0.6.1, seven features were removed and `amplitude_skew` and
+`amplitude_kurtosis` are now bias-corrected (see "Changes to match neural_eeg_features 0.6.1");
+the other features are unchanged.
 
 ### Changes to match neural_eeg_features 0.6.1
 The reference package neural_eeg_features 0.6.1 revises the NEURAL feature set. Its changes are
@@ -39,9 +40,38 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     columns, the 4 IBI columns (always NaN in `feats_median_ch`) now fall inside `[:98]`; before,
     the full set had 102 columns and `[:98]` kept only the non-IBI ones.
   - Remaining features: values unchanged (exact comparison with the previous code on all test
-    cases). The regression tests skip the removed features; the reference files in
+    cases). The regression tests skip the removed features; the original's values in
     `tests/data/` are unchanged and still hold them. New: `tests/test_removed_features.py`.
   - Examples (README, `demos.py`, docstrings) use `rEEG_CV` instead of `rEEG_SD`.
+- **`amplitude_skew` and `amplitude_kurtosis` bias-corrected** (as in the reference package):
+  absolute bias-corrected skewness, `abs(scipy.stats.skew(x, bias=False))`, and bias-corrected
+  Pearson kurtosis, `scipy.stats.kurtosis(x, fisher=False, bias=False)` (before: biased moments,
+  `bias=True`). Also as in the reference package: only finite values are used (NaN and
+  +/-inf ignored; before, kurtosis gave NaN for NaN and both gave NaN for +/-inf when called
+  directly), and the result is NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for
+  constant values (range not above eps * max(1, max |value|)); before, 2 values gave skewness 0
+  and kurtosis 1, and 3 values gave a kurtosis. Both now return a Python `float`.
+  **Default `amplitude_skew` and `amplitude_kurtosis` values change; all other outputs are
+  unchanged** (exact comparison with the previous code on all test cases). In the test data
+  every value rose slightly (per channel and epoch: skewness +0.04-0.06 %, kurtosis
+  +0.04-0.16 %; summary per band: skewness +0.037-0.048 %, kurtosis +0.052-0.081 %). The
+  skewness magnitude always increases with the correction (unless it is 0): it is multiplied by
+  sqrt(n(n-1))/(n-2), +0.037 % for a full 64 s epoch at 64 Hz (n = 4096), more where NaN
+  samples were removed. The kurtosis usually increases for EEG-like (peaked) data but can
+  decrease for very flat signals (4096 alternating -1/+1 values: 1.0 becomes 0.99902;
+  `tests/test_amplitude_moments.py`).
+  The values agree exactly with the reference package's `amplitude_features()` on the same
+  arrays (488 arrays, 456 of them real band-filtered epochs; NaN in the same places).
+  - Reference files: `tests/make_reference.py` also runs the original NEURAL with only these two
+    functions replaced (in memory) by the reference package's definitions, and stores their
+    values in section `with_neural_eeg_features_0.6.1_moments` of the clean, artefacts, edge
+    cases and input types references (`reference_windows.json` has no amplitude features).
+    `neural_outputs.with_fixes` (which replaces `with_matlab_fix`) applies the fix sections in
+    order: first the MATLAB `spectral_diff` fix (`with_matlab_fix_a279ddd`), then the 0.6.1
+    moments section. So the tests compare `spectral_diff` with the first, `amplitude_skew` and
+    `amplitude_kurtosis` with the second, and every other feature with the original NEURAL's
+    output. The original's values in the reference files are unchanged. New:
+    `tests/test_amplitude_moments.py`.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit
@@ -185,7 +215,7 @@ ported one at a time; each is listed, with before, after, reason and verificatio
   runner, this section included; the committed 2020 window reference (`reference_windows.json`)
   is kept, with its section made in the 2020 environment. The tests
   compare `spectral_diff` with them and every other output with the original's values, with the
-  same strict tolerance (`neural_outputs.with_matlab_fix`). All original values in the reference
+  same strict tolerance (`neural_outputs.with_fixes`). All original values in the reference
   files are unchanged.
 - `tests/test_spectral_diff_fix.py`: proves the fixed `spectral_diff` is right, against an
   independent computation of the window-to-window differences on synthetic signals, including

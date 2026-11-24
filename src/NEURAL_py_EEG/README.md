@@ -96,8 +96,8 @@ in more detail:
 | spectral\_diff             | difference between consecutive short-time spectral estimates                  | yes |
 | spectral\_edge\_frequency  | cut-off frequency (fc): 95% of spectral power contained between 0.5 and fc Hz | no  |
 | FD                         | fractal dimension                                                             | yes |
-| amplitude\_skew            | time-domain signal: skewness (absolute value)                                 | yes |
-| amplitude\_kurtosis        | time-domain signal: kurtosis                                                  | yes |
+| amplitude\_skew            | time-domain signal: skewness (absolute value, bias-corrected)                 | yes |
+| amplitude\_kurtosis        | time-domain signal: kurtosis (Pearson, bias-corrected)                        | yes |
 | amplitude\_env\_mean       | envelope: mean value                                                          | yes |
 | amplitude\_env\_SD         | envelope: standard deviation (SD)                                             | yes |
 | connectivity\_BSI          | brain symmetry index (see Van Putten 2007)                                    | yes |

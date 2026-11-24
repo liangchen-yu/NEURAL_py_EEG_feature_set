@@ -290,27 +290,40 @@ def compare_tree(new, reference, case, group, where=""):
 
 
 # ---------------------------------------------------------------------------
-# spectral_diff: a fix taken from the MATLAB NEURAL after the original
+# Fixes after the original: values of the original plus one fix
 # ---------------------------------------------------------------------------
-# This repository's spectral_diff has the one-line fix of MATLAB commit
-# a279ddd (2020-04-23). make_reference.py also runs the original NEURAL with
-# only that line changed, and stores its spectral_diff values in each
-# reference file under FIX_SECTION, at the same places as in the rest of the
-# file. The tests compare spectral_diff with those values and every other
-# output with the original's. tests/test_spectral_diff_fix.py checks that the
-# fixed spectral_diff itself is right.
+# Some features of this repository deliberately differ from the original.
+# For each such fix, make_reference.py also runs the original NEURAL with only
+# that fix applied (in memory) and stores the fixed features' values in each
+# reference file, in a section of their own, at the same places as in the rest
+# of the file. The tests compare those features with their fix section and
+# every other output with the original's (with_fixes).
+#
+# spectral_diff: the one-line fix of MATLAB commit a279ddd (2020-04-23);
+# tests/test_spectral_diff_fix.py checks that the fixed spectral_diff is right.
 FIXED_FEATURE = "spectral_diff"
 FIX_SECTION = "with_matlab_fix_a279ddd"
 
+# amplitude_skew and amplitude_kurtosis: the bias-corrected definitions of
+# neural_eeg_features 0.6.1; tests/test_amplitude_moments.py checks them.
+MOMENTS_FEATURES = ("amplitude_skew", "amplitude_kurtosis")
+MOMENTS_SECTION = "with_neural_eeg_features_0.6.1_moments"
 
-def fixed_feature_places(tree, path=()):
-    """Paths of the dictionary keys that name spectral_diff ("spectral_diff",
-    or e.g. "spectral_diff, tuke window")."""
+# (section, features it holds), in the order with_fixes applies them.
+FIXES = (
+    (FIX_SECTION, (FIXED_FEATURE,)),
+    (MOMENTS_SECTION, MOMENTS_FEATURES),
+)
+
+
+def feature_places(tree, features, path=()):
+    """Paths of the dictionary keys that name one of features (e.g.
+    "spectral_diff", or "spectral_diff, tuke window")."""
     for key, value in tree.items():
-        if key == FIXED_FEATURE or key.startswith(FIXED_FEATURE + ","):
+        if any(key == feature or key.startswith(feature + ",") for feature in features):
             yield path + (key,)
         elif isinstance(value, dict):
-            for found in fixed_feature_places(value, path + (key,)):
+            for found in feature_places(value, features, path + (key,)):
                 yield found
 
 
@@ -320,10 +333,10 @@ def get(tree, path):
     return tree
 
 
-def only_fixed_feature(tree):
-    """The spectral_diff entries of tree, at the same places, and nothing else."""
+def only_features(tree, features):
+    """The entries of tree for features, at the same places, and nothing else."""
     result = {}
-    for path in fixed_feature_places(tree):
+    for path in feature_places(tree, features):
         node = result
         for key in path[:-1]:
             node = node.setdefault(key, {})
@@ -332,9 +345,9 @@ def only_fixed_feature(tree):
 
 
 def check_fix_not_lower(new, old, where):
-    """Sanity check of the stored values: the fix removes a 0 from a median of
-    values >= 0, so no value can fall; NaN stays NaN, and a new NaN only
-    replaces a 0 (no window-to-window difference)."""
+    """Sanity check of the stored spectral_diff values: the fix removes a 0
+    from a median of values >= 0, so no value can fall; NaN stays NaN, and a
+    new NaN only replaces a 0 (no window-to-window difference)."""
     if isinstance(old, dict):
         for key in old:
             check_fix_not_lower(new[key], old[key], "%s %s" % (where, key))
@@ -343,20 +356,26 @@ def check_fix_not_lower(new, old, where):
         finite = np.isfinite(a) & np.isfinite(b)
         new_nan = np.isnan(a) & ~np.isnan(b)
         assert (a.shape == b.shape and np.all(a[finite] >= b[finite] - ATOL - RTOL * np.abs(b[finite]))
-                and np.all(np.isnan(a[np.isnan(b)])) and np.all(b[new_nan] == 0)), \
-            "%s: the values with the MATLAB fix are lower than the original's" % where
+                and np.all(np.isnan(a[np.isnan(b)])) and np.all(b[new_nan] == 0)),             "%s: the values with the MATLAB fix are lower than the original's" % where
 
 
-def with_matlab_fix(reference):
-    """The reference as the tests use it: spectral_diff values from the
-    original plus the MATLAB fix (FIX_SECTION), all other values unchanged."""
+def with_fixes(reference):
+    """The reference as the tests use it: each fixed feature's values from its
+    fix section (FIXES), all other values the original's. A file without a fix
+    section must also have none of its features (reference_windows.json has no
+    amplitude features, so it has no moments section)."""
     reference = copy.deepcopy(reference)
-    fixed = reference.pop(FIX_SECTION)
-    places = sorted(fixed_feature_places(reference))
-    assert places == sorted(fixed_feature_places(fixed)), "%s does not match the reference" % FIX_SECTION
-    for path in places:
-        check_fix_not_lower(get(fixed, path), get(reference, path), " ".join(path))
-        get(reference, path[:-1])[path[-1]] = get(fixed, path)
+    for section, features in FIXES:
+        fixed = reference.pop(section, None)
+        places = sorted(feature_places(reference, features))
+        if fixed is None:
+            assert not places, "no %s section, but the reference has %s" % (section, ", ".join(features))
+            continue
+        assert places == sorted(feature_places(fixed, features)), "%s does not match the reference" % section
+        for path in places:
+            if section == FIX_SECTION:
+                check_fix_not_lower(get(fixed, path), get(reference, path), " ".join(path))
+            get(reference, path[:-1])[path[-1]] = get(fixed, path)
     return reference
 
 

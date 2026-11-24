@@ -33,24 +33,48 @@ def amplitude_env_SD(data):
     return np.nanstd(squared_envelope, ddof=1)
 
 
+def _finite_varying(data):
+    """The finite values of data (NaN and +/-inf dropped), or None if they are
+    empty or constant: their range is not above eps * max(1, max |value|).
+    The rule of neural_eeg_features 0.6.1 (amplitude.py)."""
+    values = np.asarray(data, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return None
+    if not np.ptp(values) > np.finfo(float).eps * max(1, np.max(np.abs(values))):
+        return None
+    return values
+
+
 def amplitude_skew(data):
     """Pass in an array or list and return how lopsided the values are;
-    0 = symmetric (absolute skewness). Ignores NaN. No units.
+    0 = symmetric (absolute value of the bias-corrected sample skewness,
+    scipy.stats.skew with bias=False, as in neural_eeg_features 0.6.1).
+    Ignores NaN and +/-inf. NaN for fewer than 3 values or constant values.
+    No units.
 
     >amplitude_skew([3,7,8,9,1])
-    0.4071
+    0.6069
     """
-    return np.abs(stats.skew(data, nan_policy="omit"))
+    values = _finite_varying(data)
+    if values is None or values.size < 3:
+        return np.nan
+    return float(abs(stats.skew(values, bias=False)))
 
 
 def amplitude_kurtosis(data):
     """Pass in an array or list and return how spiky / heavy-tailed the signal
-    is; 3 = normal (Pearson kurtosis). Any NaN gives NaN. No units.
+    is; 3 = normal (bias-corrected Pearson kurtosis, scipy.stats.kurtosis with
+    fisher=False and bias=False, as in neural_eeg_features 0.6.1). Ignores NaN
+    and +/-inf. NaN for fewer than 4 values or constant values. No units.
 
     >amplitude_kurtosis([3,7,8,9,1])
-    1.4904
+    0.9618
     """
-    return stats.kurtosis(data, fisher=False)
+    values = _finite_varying(data)
+    if values is None or values.size < 4:
+        return np.nan
+    return float(stats.kurtosis(values, fisher=False, bias=False))
 
 
 def main_amplitude(x, Fs, feat_name, params=None):

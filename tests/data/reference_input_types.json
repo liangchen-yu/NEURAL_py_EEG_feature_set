@@ -3,7 +3,8 @@
     "what": "Reference values for tests/test_edge_cases.py from the original NEURAL with pandas 2.3.3 (see made_with): other kinds of row index, and read-only arrays. Steps: edge_cases.index_type_results and edge_cases.read_only_results.",
     "index_types": "The same EEG with a default, datetime, text, reversed-integer or 1000-based integer row index: generate_all_features (feats_median_all of all 26 non-IBI features), the preprocessing steps (artefact report and a fingerprint of the 64 Hz result) and preprocessing_EEG.overlap_epochs (a fingerprint of the epochs). {error, in_neural_function} records where the original stopped with an error.",
     "read_only": "connectivity_features.gen_coherence on two bipolar channels at 64 Hz. The original needs writable arrays, so these values were made with writable ones; the tests use read-only arrays (as pandas 3 gives) and expect the same values. inputs_unchanged: the input arrays were left unchanged.",
-    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values."
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values.",
+    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values."
   },
   "made_with": {
     "python": "3.14.7",
@@ -486,6 +487,28 @@
         },
         "integers in reverse order": {
           "spectral_diff": [0.007451824563511357,0.01885315228969139,0.010862393988305373,0.013822844031747371]
+        }
+      }
+    }
+  },
+  "with_neural_eeg_features_0.6.1_moments": {
+    "index_types": {
+      "generate_all_features": {
+        "default 0, 1, 2, ...": {
+          "amplitude_skew": [0.06670972216781657,0.002908223197313527,0.002482281875473698,0.040963254006303906],
+          "amplitude_kurtosis": [3.3192098461516846,3.0865949500837297,3.2460376423608444,3.3127920430695985]
+        },
+        "datetime": {
+          "amplitude_skew": [0.06670972216781657,0.002908223197313527,0.002482281875473698,0.040963254006303906],
+          "amplitude_kurtosis": [3.3192098461516846,3.0865949500837297,3.2460376423608444,3.3127920430695985]
+        },
+        "text": {
+          "amplitude_skew": [0.06670972216781657,0.002908223197313527,0.002482281875473698,0.040963254006303906],
+          "amplitude_kurtosis": [3.3192098461516846,3.0865949500837297,3.2460376423608444,3.3127920430695985]
+        },
+        "integers in reverse order": {
+          "amplitude_skew": [0.06107933368287474,0.003400597982224139,0.003554544975905436,0.05186905590403315],
+          "amplitude_kurtosis": [3.4094909869380645,3.127906210748781,3.2770022421996248,3.380797670533072]
         }
       }
     }

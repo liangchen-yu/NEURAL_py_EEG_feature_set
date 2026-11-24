@@ -7,8 +7,10 @@ repository on the same inputs and compares every number, with a strict
 tolerance (see neural_outputs.RTOL and ATOL). Run with:  pytest
 
 spectral_diff is compared, with the same tolerance, with the values of the
-original plus the one-line MATLAB fix a279ddd, which make_reference.py stores
-in the same reference files (neural_outputs.with_matlab_fix).
+original plus the one-line MATLAB fix a279ddd, and amplitude_skew and
+amplitude_kurtosis with the values of the original plus the definitions of
+neural_eeg_features 0.6.1; make_reference.py stores both in the same
+reference files (neural_outputs.with_fixes).
 
 The 7 features removed to match neural_eeg_features 0.6.1 are still in the
 reference files; the tests skip them (neural_outputs.without_removed_features).
@@ -42,6 +44,30 @@ def test_reference_has_the_originals_26_non_ibi_features(raw_reference, referenc
         assert set(neural_outputs.REMOVED_FEATURES) <= set(original)
         assert [f for f in original if f not in neural_outputs.REMOVED_FEATURES] == features
         assert list(reference[case]["features"]) == features
+
+
+def test_moments_section_holds_the_bias_corrected_values(raw_reference):
+    """The neural_eeg_features 0.6.1 moments section holds amplitude_skew and
+    amplitude_kurtosis only, and its values are not a copy of the original's.
+
+    This checks the STORED synthetic reference data only, where every finite
+    value happens to be higher with the bias correction. It is not a general
+    property: the skewness magnitude never decreases, but the corrected
+    kurtosis can be lower for very flat data (see test_amplitude_moments.py)."""
+    import numpy as np
+
+    for case in CASES:
+        section = raw_reference[case][neural_outputs.MOMENTS_SECTION]
+        assert list(section["features"]) == list(neural_outputs.MOMENTS_FEATURES)
+        for feature in neural_outputs.MOMENTS_FEATURES:
+            fixed = neural_outputs.to_array(section["features"][feature]["feats_per_epochs"])
+            original = neural_outputs.to_array(raw_reference[case]["features"][feature]["feats_per_epochs"])
+            # NaN and +/-inf at the same places (checked separately) ...
+            assert np.array_equal(np.isnan(fixed), np.isnan(original))
+            assert np.array_equal(np.isinf(fixed), np.isinf(original))
+            # ... and, in this stored data, every finite value higher.
+            finite = np.isfinite(original)
+            assert finite.any() and np.all(fixed[finite] > original[finite])
 
 
 @pytest.mark.parametrize("case", CASES)
