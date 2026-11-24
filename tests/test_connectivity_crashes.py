@@ -5,7 +5,8 @@ Before the fix, connectivity_features.main_connectivity crashed for exactly
 (reported as "Feature function not found"), and missing channel labels
 crashed too. These tests check the fixed behaviour, which follows the intent
 of MATLAB connectivity_features.m (see CHANGELOG for the deliberate
-differences), that the usual 8-channel case is unchanged byte for byte, and
+differences), that the usual 8-channel case is unchanged (within the
+regression tolerance), and
 the only case where a value computed before changes (BSI, one left channel,
 a band of only the 0 Hz bin).
 
@@ -109,13 +110,19 @@ def test_bsi_one_left_channel_band_at_0_hz(eeg, order):
     bins are 0.125 Hz apart). The old code indexed channels instead of
     frequencies and returned the whole-spectrum BSI average (0.1711 for this
     pair; for the unmatched-first order, against the wrong channel). The
-    value must now be the 0 Hz value of the pair C3_O1 / C4_O2."""
+    value must now be the 0 Hz value of the pair C3_O1 / C4_O2, as recorded
+    (0.24434112994141818), within the regression tolerance of
+    tests/neural_outputs.py (rtol 1e-9, atol 1e-12; NaN must match NaN).
+    Exact bytes are not required, because they differ across machines
+    (rounding in the last bits)."""
     params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
     params["freq_bands"] = [[0, 0.1]]
     x, labels = channels(eeg, ONE_LEFT_TWO_RIGHT[order])
     result = connectivity(x, labels, "connectivity_BSI", params)
     assert result.dtype == np.float64 and result.shape == (1,)
-    assert result.tobytes() == np.array([0.24434112994141818]).tobytes()
+    np.testing.assert_allclose(
+        result, np.array([0.24434112994141818]), rtol=1e-9, atol=1e-12, equal_nan=True
+    )
     assert result[0] != whole_spectrum_bsi(eeg, "C3_O1", "C4_O2")
 
 
@@ -148,11 +155,17 @@ def test_no_left_right_pairs_gives_nan_per_band(eeg, n_bands, feature):
 @pytest.mark.parametrize("feature", FEATURES)
 def test_eight_channels_unchanged(eeg, feature):
     """The usual case, all 8 NEURAL bipolar channels with labels, worked
-    before the fix and must give exactly the same values: same dtype, shape
-    and bytes (no tolerance)."""
+    before the fix and must still give the recorded pre-fix values: same
+    dtype and shape, and values equal within the regression tolerance of
+    tests/neural_outputs.py (rtol 1e-9, atol 1e-12; NaN must match NaN).
+    Exact bytes are not required, because they differ across machines:
+    rounding in the last bits, up to about 2e-10 relative on GitHub's Ubuntu
+    runners. connectivity_coh_freqmax lies on a grid of 0.125 Hz or more, far
+    wider than this tolerance, so the same check still catches a different
+    grid point."""
     x, labels = eeg
     result = connectivity(x.copy(), np.array(labels), feature)
     expected = np.array(BEFORE_FIX_8_CHANNELS[feature], dtype=np.float64)
     assert result.dtype == expected.dtype
     assert result.shape == expected.shape
-    assert result.tobytes() == expected.tobytes()
+    np.testing.assert_allclose(result, expected, rtol=1e-9, atol=1e-12, equal_nan=True)
