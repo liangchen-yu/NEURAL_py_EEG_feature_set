@@ -259,8 +259,25 @@ def connectivity_BSI(
         )  # Check what the 1 does
         X_right = np.nanmean(X[ipairs[1, :].astype(int), :], axis=0)  # Again check
     else:
-        X_left = X[ileft, :]
-        X_right = X[iright, :]
+        # One left channel: use it and its paired right channel as 1-D spectra,
+        # so ibandpass indexes frequencies, as with the row vector X(ileft, :)
+        # in MATLAB connectivity_features.m:119. X[ileft, :] kept a channel
+        # axis of length 1, so ibandpass indexed channels: IndexError for any
+        # band past the 0 Hz bin.
+        # The only case where a value computed before changes: the old code
+        # avoided the crash only when every band's bin indices (ibandpass,
+        # after clipping) were just index 0, for any spectral method (e.g.
+        # bands below 0.125 Hz with the default method). Index 0 then picked
+        # the whole channel row, so it returned the BSI averaged over the
+        # whole spectrum instead of the band, against the first right channel
+        # in label order (not necessarily the pair). That value was wrong;
+        # this is the band's value.
+        # Deliberate difference from MATLAB: with 2+ right channels, X(iright, :)
+        # (line 120) is a matrix and X_right(ibandpass) (line 150) indexes it
+        # column-major, interleaving the right channels. Here the matched pair
+        # is used; which is intended is an open question for the maintainer.
+        X_left = X[ipairs[0, 0], :]
+        X_right = X[ipairs[1, 0], :]
 
     featx = np.zeros(N_freq_bands)
     ibandpass = []  # to suppress warning
@@ -741,20 +758,25 @@ def main_connectivity(x, Fs, feat_name, ch_labels, params=None):
     if N_freq_bands == 0:
         N_freq_bands = 1
 
-    ileft = []
-    iright = []
-    ipairs = []
-    if N_channels > 2 and len(ch_labels) != 0:
-        ileft, iright = channel_hemispheres(ch_labels)
-        ipairs = channel_hemisphere_pairs(ch_labels)
-    elif N_channels == 2:
-        # if no channel labels then guess
-        ileft = 0
-        iright = 1
-        ipairs = np.array([1, 2])
+    # Pair channels by label for 2 or more channels; without labels, warn and
+    # return NaN for each frequency band. This restores the Python fix of
+    # 81a04e6 (lost in 6638773) and follows the intent of MATLAB 867849b.
+    # Before, 2 channels were guessed as a pair with a 1-D ipairs (IndexError)
+    # and 3+ channels without labels failed too.
+    # Deliberate difference from MATLAB: NaN for each band (as the Python code
+    # already returned for no pairs) where MATLAB returns a scalar NaN.
+    if ch_labels is None or len(ch_labels) == 0:
+        warnings.warn("REQUIRED: channel names for connectivity functions.")
+        return np.full(N_freq_bands, np.nan)
+    ileft, iright = channel_hemispheres(ch_labels)
+    ipairs = channel_hemisphere_pairs(ch_labels)
 
+    # No left/right channel pairs: NaN for each frequency band (intent of
+    # MATLAB c521173 and Python 81a04e6, lost in 6638773); was always 4 NaN
+    # values. Deliberate differences from MATLAB: NaN per band, not a scalar
+    # NaN; and no warning, so inputs that worked before behave exactly as before.
     if ipairs.shape[1] == 0:
-        return np.array([np.nan, np.nan, np.nan, np.nan])
+        return np.full(N_freq_bands, np.nan)
     try:
         if (
             feat_name == "connectivity_coh_mean"

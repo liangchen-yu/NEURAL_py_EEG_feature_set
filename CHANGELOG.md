@@ -10,9 +10,9 @@ non-integer rate ratios (e.g. 200 or 250 Hz), when artefact removal is turned of
 (`REMOVE_ART = 0` or `remove_art=False`), for `spectral_diff` (see "Output changes"), for FD
 with three or more frequency bands or `method = 'katz'` (and `main_fd`, called directly, now
 accepts the empty `[]` and single-row `[[low, high]]` band layouts, which raised `IndexError`
-before), and for band-pass and high-pass filters
-built by `utils.filter_zerophase` (not used by the default pipeline); the tests in `tests/` check
-this.
+before), for band-pass and high-pass filters
+built by `utils.filter_zerophase` (not used by the default pipeline), and for two connectivity
+edge cases (see the `connectivity_features` entry); the tests in `tests/` check this.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit
@@ -117,6 +117,32 @@ this.
   channels, at least 2 on each side). That check's work array is now sized from the bipolar
   channels, as in MATLAB `remove_artefacts.m` (line 111), not from the referential data. No change
   to results that previously worked. `tests/test_referential_crash.py` covers this.
+- `connectivity_features`: crashes fixed, following the intent of MATLAB `connectivity_features.m`.
+  Inputs that worked before give identical results, with two documented exceptions: the number of
+  NaN values when there are no left/right pairs (below), and one BSI case (below).
+  - `main_connectivity` crashed for exactly 2 channels (IndexError) and for missing channel
+    labels. Channels are now paired by label whenever there are 2 or more; without labels it warns
+    and returns NaN for each frequency band (the Python fix of 0.1.2, lost in the 2022 restructure;
+    MATLAB 867849b). With no left/right pairs it returns NaN for each frequency band instead of
+    always 4 values (MATLAB c521173); this changes only non-default numbers of bands, for which
+    `generate_all_features` crashed on the 4 values.
+  - `connectivity_BSI` crashed with a single left channel (reported as "Feature function not
+    found"). It now uses that channel and its paired right channel.
+  - Exception, the only case where a value computed before changes: BSI with a single
+    left channel (3 or more channels). The old code indexed the channel axis instead of the
+    frequency axis, so it avoided a crash only when every band's computed bin indices (after
+    clipping) were just index 0, for any spectral method. Index 0 then selected the whole channel,
+    so it returned the BSI averaged over the whole spectrum instead of the band, against the first
+    right channel in label order (not necessarily the pair). Example with the default method (bins
+    0.125 Hz apart): `freq_bands = [[0, 0.1]]` with C3_O1, C4_O2, C4_T4 gave 0.1711 instead of the
+    0 Hz band value 0.2443. The old value was wrong, so it is not kept.
+  - Deliberate differences from MATLAB: NaN for each frequency band where MATLAB returns a scalar
+    NaN; no warning when there are no left/right pairs (MATLAB warns), so that inputs that worked
+    before behave exactly as before; with one left channel and 2 or more right channels, BSI uses
+    the matched pair, whereas MATLAB's `X(iright, :)` is a matrix that `X_right(ibandpass)`
+    indexes column-major (`connectivity_features.m:150`), interleaving the right channels. Which of
+    these is intended is an open question for the maintainer.
+  - `tests/test_connectivity_crashes.py` covers these cases and the unchanged 8-channel results.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original
