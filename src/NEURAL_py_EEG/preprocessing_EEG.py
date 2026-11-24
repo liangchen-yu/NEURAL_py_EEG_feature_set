@@ -2,6 +2,8 @@
 # Date started: 30/01/2020
 # Last updated: <25/07/2022 16:40:13 (BrianM)>
 
+from fractions import Fraction
+
 import pandas as pd
 from NEURAL_py_EEG import utils
 import numpy as np
@@ -98,6 +100,8 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     x_epochs.fill(np.nan)
     x_epochs_inds = np.zeros([N_epochs, L_epoch])
 
+    # Preserve pandas < 3 position/label indexing for x[nf].
+    x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
         # zero-pad if outside x
@@ -119,6 +123,9 @@ def art_per_channel(x, Fs, DBverbose):
     :param x: data from a single channel - numpy array
     :param Fs: sampling frequency
     :return: x, data with artefacts set as nan
+
+    Mutates x in place, so it must be writable. remove_artefacts passes a
+    channel copy because pandas 3 arrays can be read-only.
     """
     params = NEURAL_parameters.NEURAL_parameters()
 
@@ -298,9 +305,14 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
     if not data_ref.empty:
         x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
         for ch in range(data_ref.shape[1]):
-            x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                data_ref[channel_names_ref[ch]].to_numpy(), Fs, 20, 0.5, 5
-            )
+            # pandas 3 gives a read-only array, so filter a copy.
+            x_ref = data_ref[channel_names_ref[ch]].to_numpy(copy=True)
+            had_nans = np.isnan(x_ref).any()
+            x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_ref, Fs, 20, 0.5, 5)
+            if had_nans:
+                # Preserve the original pandas-view side effect: filled NaN
+                # samples must also reach the caller's DataFrame.
+                data_ref[channel_names_ref[ch]] = x_ref
 
         r = np.corrcoef(x_filt)
         np.fill_diagonal(r, np.nan)
@@ -344,11 +356,18 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         if len(ileft) > 1 and len(iright) > 1:
             x_means = np.zeros(N_channels)
 
-            x_filt = np.zeros([data_ref.shape[1], data_ref.shape[0]])
+            # One row per remaining bipolar channel, as MATLAB
+            # remove_artefacts.m:111 (zeros(N_channels,N)). Sizing it from the
+            # referential data failed when none were given.
+            x_filt = np.zeros([N_channels, N])
             for ch in range(N_channels):
-                x_filt[ch, :], dum = utils.filter_butterworth_withnans(
-                    data[ch_labels[ichannels[ch]]].to_numpy(), Fs, 20, 0.5, 5
-                )
+                # Keep the original NaN filling in data so later artefact
+                # checks see the same samples as with pandas views.
+                x_bi = data[ch_labels[ichannels[ch]]].to_numpy(copy=True)
+                had_nans = np.isnan(x_bi).any()
+                x_filt[ch, :], dum = utils.filter_butterworth_withnans(x_bi, Fs, 20, 0.5, 5)
+                if had_nans:
+                    data[ch_labels[ichannels[ch]]] = x_bi
 
             A = []  # to suppress warning
             for n in range(N_channels):
@@ -392,7 +411,7 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
 
     for n in ichannels:
         data[ch_labels[n]], tmpp = art_per_channel(
-            data[ch_labels[n]].to_numpy(), Fs, DBverbose
+            data[ch_labels[n]].to_numpy(copy=True), Fs, DBverbose
         )
         if ct == 0:
             amount_removed[ct, :] = tmpp
@@ -401,7 +420,9 @@ def remove_artefacts(data, ch_labels, Fs, data_ref, ch_labels_ref):
         ct += 1
         irem = np.append(irem, np.where(np.isnan(data[ch_labels[n]])))
         if any(np.isinf(data[ch_labels[n]])):
-            data[ch_labels[n]][np.where(data[ch_labels[n]] == np.inf)[0]] = np.nan
+            # pandas 3 ignores chained assignment; use .loc instead.
+            # Preserve the original replacement of +inf only.
+            data.loc[data[ch_labels[n]] == np.inf, ch_labels[n]] = np.nan
 
     # remove artefacts across all channels
 
@@ -459,7 +480,7 @@ def signal_downsample(pd_data, Fs, Fs_new):
     cols = list(pd_data.columns)
 
     def isint(x):
-        return x == round(x, 1)
+        return x == round(x)  # matches MATLAB resample_savemat.m:140
 
     pd_data_downsample = pd.DataFrame()
     loop_index = 0
@@ -473,9 +494,13 @@ def signal_downsample(pd_data, Fs, Fs_new):
             pd_data_downsample.insert(loop_index, cols[i], eeg_data)
             loop_index += 1
     else:
-        size_resampled = signal.resample_poly(
-            np.ones(len(pd_data)), round(len(pd_data) / (Fs / Fs_new)), len(pd_data)
-        ).size
+        # Match MATLAB resample_savemat.m:152; the rate must not depend on length.
+        rate_ratio = Fraction(Fs_new) / Fraction(Fs)
+        if not (isint(Fs) and isint(Fs_new)):
+            rate_ratio = rate_ratio.limit_denominator(10000)
+        up, down = rate_ratio.numerator, rate_ratio.denominator
+
+        size_resampled = signal.resample_poly(np.ones(len(pd_data)), up, down).size
 
         for i in range(
             len(cols)
@@ -488,36 +513,49 @@ def signal_downsample(pd_data, Fs, Fs_new):
                 loop_index += 1
                 continue
 
-            down_eeg_data = signal.resample_poly(
-                data, round(len(data) / (Fs / Fs_new)), len(data)
-            )
+            down_eeg_data = signal.resample_poly(data, up, down)
             pd_data_downsample.insert(loop_index, cols[i], down_eeg_data)
             loop_index += 1
 
     return pd_data_downsample, Fs_new
 
 
-def main_preprocessing(file, save_converted=None, save=0, Fs_new=64):
+def main_preprocessing(file, save_converted=None, save=0, Fs_new=64, remove_art=None):
     """
     This function is used to  a) read in EEG from .edf files
-                              b) remove artefacts
+                              b) remove artefacts (optional; see remove_art)
                               c) band-pass filter
                               d) downsample
                               e) save as .csv file
 
+    remove_art: None uses REMOVE_ART (default 1, on), as in MATLAB
+        resample_savemat.m. True runs removal; False sends the bipolar
+        montage directly to the filter and returns amount_removed=None.
+
+    Warning: False skips all six checks: referential low correlation,
+    electrode coupling, zeros, high amplitude, constant values and sudden
+    jumps. Use only data already checked for artefacts.
     """
     data, ch_fs = load_edf_EEG_file(file)
     Fs = ch_fs[0]  # Assuming all EEG channels
 
     montage_data, dum = utils.set_bi_montage(data, Fs)
 
-    clean_data, amount_removed = remove_artefacts(
-        montage_data.copy(),
-        np.array(list(montage_data.columns)),
-        Fs,
-        data,
-        np.array(list(data.columns)),
-    )
+    if remove_art is None:
+        remove_art = NEURAL_parameters.NEURAL_parameters()["REMOVE_ART"]
+
+    # Match MATLAB resample_savemat.m:120-122.
+    if remove_art:
+        clean_data, amount_removed = remove_artefacts(
+            montage_data.copy(),
+            np.array(list(montage_data.columns)),
+            Fs,
+            data,
+            np.array(list(data.columns)),
+        )
+    else:
+        clean_data = montage_data
+        amount_removed = None
 
     filtered_data = LPF_zero_phase(clean_data.copy(), Fs)
 

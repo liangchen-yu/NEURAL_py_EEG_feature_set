@@ -94,6 +94,8 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     x_epochs = np.empty([N_epochs, L_epoch])
     x_epochs.fill(np.nan)
 
+    # Preserve pandas < 3 position/label indexing for x[nf].
+    x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
         # zero-pad if outside x

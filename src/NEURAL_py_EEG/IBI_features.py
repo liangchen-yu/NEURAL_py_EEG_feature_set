@@ -11,11 +11,13 @@ from pathlib import Path
 
 
 def mat_percentile(x, q):
-    """
-    Percentile function to mimic MATLAB
-    :param x:
-    :param q:
-    :return:
+    """Pass in an array or list and return its q-th percentile, q in percent
+    (MATLAB-style percentile, to mimic MATLAB's prctile). q can be a number
+    or a list. Ignores NaN; all-NaN or empty input gives NaN.
+    Units: same as input.
+
+    >mat_percentile([1,2,3,4], 50)
+    2.5
     """
     q = np.array(q) / 100
     x = np.delete(x, np.where(np.isnan(x))[0])
@@ -27,8 +29,12 @@ def mat_percentile(x, q):
 
 
 def estimate_IBI_lengths(anno, percentiles_all, Fs):
-    """
-    Estimate the max./median IBI length
+    """Pass in a burst annotation (1 = burst, 0 = inter-burst) and return the
+    given percentile(s) of the inter-burst interval lengths (IBI length).
+    Gaps shorter than Fs/4 samples (0.25 s) are dropped; if none remain,
+    returns array([0.]). A NaN sample ends a gap. Lengths come from
+    utils.len_cont_zeros, which counts one sample fewer than each gap.
+    Units: seconds.
     """
     min_ibi_interval = Fs / 4
     lens_anno = utils.len_cont_zeros(anno)[0]
@@ -38,6 +44,8 @@ def estimate_IBI_lengths(anno, percentiles_all, Fs):
     if ishort.size > 0:
         lens_anno = np.delete(lens_anno, ishort)
 
+    # len() of this comparison is just the number of gaps, so this asks
+    # whether any gaps are left.
     if len(lens_anno != 0):
         pc_anno = mat_percentile(lens_anno, percentiles_all)
     else:
@@ -46,42 +54,53 @@ def estimate_IBI_lengths(anno, percentiles_all, Fs):
 
 
 def main_IBI(x, Fs, feat_name):
-    """
-    IBI_features: burst/inter-burst interval features (assuming preterm EEG, <32 weeks GA)
+    """Return a burst / inter-burst interval (IBI) feature for one channel
+    (assuming preterm EEG, <32 weeks GA).
 
-    Syntax: featx = main_IBI(x, Fs, feat_name, params_st)
+    Syntax: featx = main_IBI(x, Fs, feat_name)
 
     Inputs:
-        x          - epoch of EEG data (size 1 x N)
+        x          - EEG data for one channel (1-D array of N samples)
         Fs         - sampling frequency (in Hz)
-        feat_name  - feature type, defaults to 'IBI_length_max';
-                     see full list of 'IBI_' features in params['FEATURE_SET_ALL']
-        params_st  - parameters (as structure);
-                     see NEURAL_parameters() for examples
+        feat_name  - IBI feature to calculate, e.g. 'IBI_length_max';
+                     see the 'IBI_' features in FEATURE_SET_ALL
+                     (NEURAL_parameters.py)
 
     Outputs:
-        featx  - IBI features
+        featx  - feature value:
+                 'IBI_length_max'     - 95th percentile IBI length (seconds)
+                 'IBI_length_median'  - median IBI length (seconds)
+                 'IBI_burst_prc'      - % of samples marked as burst
+                                        (NaN samples count as not burst)
+                 'IBI_burst_number'   - number of bursts
+                 NaN if the burst detector is not found
+
+    Note: needs the external burst detector [1] (eeg_burst_detector.py).
+    Its folder is set in bdetect_path_string below; until that placeholder
+    is edited, a message is printed and NaN is returned for every feat_name.
+    An unknown feat_name raises ValueError only once the detector is found.
 
     Example:
-        import utils
-        import IBI_features
-        import matplotlib.pyplot as plt
+        import sys
         sys.path.append('path to ->\\py_burst_detector-master\\')
         from burst_detector import utils as bdutils
+        from NEURAL_py_EEG import IBI_features
+
         N = 5000
         Fs = 64
         x = bdutils.gen_impulsive_noise(N)
 
         featx = IBI_features.main_IBI(x,Fs,'IBI_burst_number');
 
-    [1] JM Oâ€™ Toole, GB Boylan, RO Lloyd, RM Goulding, S Vanhatalo, NJ Stevenson
-    (2017). Detecting Bursts in the EEG of Very and Extremely Premature Infants using a
-    Multi-Feature Approach. under review, 2017.
-
+    [1] JM O'Toole, GB Boylan, RO Lloyd, RM Goulding, S Vanhatalo,
+    NJ Stevenson (2017). Detecting Bursts in the EEG of Very and Extremely
+    Premature Infants using a Multi-Feature Approach. under review, 2017.
     """
 
     DBplot = 0
 
+    # Placeholder: edit to the folder of the downloaded burst detector. Until
+    # then the check below fails and every IBI feature returns NaN.
     bdetect_path_string = (
         "Enter path to ->" + "py_burst_detector-master/py_burst_detector-master/"
     )

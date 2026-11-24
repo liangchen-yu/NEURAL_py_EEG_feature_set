@@ -1,6 +1,48 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "NEURAL_py_EEG"
+version = "0.1.1"
+description = "A Neonatal EEG Pre-Processing and Feature Set in python"
+readme = "README.md"
+authors = [{ name = "Brian Murphy", email = "Brian.M.Murphy@umail.ucc.ie" }]
+license = "BSD-3-Clause"
+license-files = ["LICENSE.md"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+# Lower bounds = the oldest versions tested, natively or in a web browser
+# (Pyodide); see README, "Maintenance". Only Python 3.14 has been tested.
+# Exact versions for a reproducible environment are in uv.lock.
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.6",
+    "scipy>=1.18.0",
+    "pandas>=2.3.3",
+    "mne>=1.13.2",
+    "matplotlib>=3.10.8",
+    "pyedflib>=0.1.42",
+]
+
+[project.urls]
+Homepage = "https://github.com/BrianMur92/NEURAL_py_EEG_feature_set"
+"Bug Tracker" = "https://github.com/BrianMur92/NEURAL_py_EEG_feature_set/issues"
+
+# Tools for developing and testing (uv installs this group by default).
+[dependency-groups]
+dev = ["pytest>=9.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import NEURAL from this folder's src/ (the working copy), even if another
+# copy is installed; tests/conftest.py checks this.
+pythonpath = ["src"]
+# NEURAL's utils.len_cont_zeros warns "Must be a binary signal" during normal
+# use (its check is the wrong way round); hide only that message in test output.
+filterwarnings = ["ignore:Must be a binary signal:DeprecationWarning"]
