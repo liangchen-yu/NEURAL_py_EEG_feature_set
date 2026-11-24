@@ -9,6 +9,7 @@ the reference package's `docs/definitions.md`.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Remove 7 features: `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`, `rEEG_width`, `rEEG_SD`, `connectivity_coh_max`, `connectivity_coh_freqmax` | `FEATURE_SET_ALL` has 30 names (26 non-IBI); with the default bands, 102 feature columns; a default call's `feats_median_ch` has 98 columns (the non-IBI ones) | `FEATURE_SET_ALL` has the reference package's 23 names in the same order (19 non-IBI); 74 columns. `feats_median_ch` still keeps the first 98 columns (`[:98]` unchanged): the same explicit feature list gives the same columns; a default call gives 74 (28 removed-feature columns gone, the 4 always-NaN IBI columns now included). Requesting a removed name raises `ValueError` naming it, in `generate_all_features`, `main_amplitude`, `main_rEEG` and `main_connectivity`. Public functions `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`, `rEEG_width`, `rEEG_SD` deleted; coherence max and max-frequency branches removed | "Version changes and validation limits" (0.2 removes the two coherence features, 0.3 the two amplitude features, 0.4 `rEEG_mean`, 0.5 `rEEG_width` and `rEEG_SD`; requesting a removed name raises `ValueError`); "Deliberate settings and feature-selection differences" (the seven names deliberately removed; 23 remain); "Feature catalogue" (the amplitude pair removed as largely redundant measures of band energy) | Exact comparison with the previous code (commit dc272ea) on all test cases, with the same explicit feature lists: 16,299 values, 0 differ, same columns (details below). Regression tests against `tests/data/` (removed features skipped): all pass, 0 values outside tolerance. New `tests/test_removed_features.py`: each removed name raises `ValueError`; `FEATURE_SET_ALL` equals the reference package's `ALL_FEATURES` and the removed names equal those in its `docs/definitions.md`; `feats_median_ch` keeps all columns of a request with fewer than 98 columns, as before (73 for all features except FD; 4 with empty rEEG bands and `spectral_power` only; 74 for the default call, including the 4 always-NaN IBI columns) |
 | 2 | `amplitude_skew` and `amplitude_kurtosis`: bias-corrected moments, as in the reference package | Biased moments: `abs(scipy.stats.skew(x, nan_policy="omit"))` and `scipy.stats.kurtosis(x, fisher=False)` (Pearson). `main_amplitude` removed NaN first; called directly, kurtosis gave NaN for NaN and both gave NaN for +/-inf. No explicit rule for short input: 2 values gave skewness 0 and kurtosis 1, 3 values gave a kurtosis. Constant input: NaN from scipy's own check | `abs(scipy.stats.skew(x, bias=False))` and `scipy.stats.kurtosis(x, fisher=False, bias=False)` (Pearson) on the finite values only (NaN and +/-inf ignored). NaN for fewer than 3 (skewness) or 4 (kurtosis) values, and for constant values (range not above eps * max(1, max abs value)), as in the reference package's `amplitude.py`. In the test data every value rose slightly (skewness +0.04-0.06 %, kurtosis +0.04-0.16 %). The skewness magnitude always increases with the correction (factor sqrt(n(n-1))/(n-2), +0.037 % for a full 64 s epoch, n = 4096), unless it is 0; the kurtosis usually does for EEG-like data but can decrease for very flat signals (4096 alternating -1/+1 values: 1.0 becomes 0.99902). No other output changes | "Skewness and kurtosis: correction to the earlier audit" (the reference package uses `bias=False`, and `fisher=False` for Pearson kurtosis; the older NEURAL Python port uses biased moments; example `[-2, -1, 0, 1, 2]`: kurtosis 1.8, original 1.7); "Feature catalogue" (absolute bias-corrected skewness; bias-corrected Pearson kurtosis, not excess kurtosis) | Same arrays through the reference package's `amplitude_features()` (in its own environment) and this repository's functions: 488 arrays (456 real band-filtered epochs of the synthetic test recordings, 32 synthetic edge cases), every finite value exactly equal (max abs and rel difference 0), NaN in the same places (skewness 10, kurtosis 12). Exact comparison with the previous code (commit 2bd0742) on all test cases: 15,070 values of other features, 0 differ; of each moment's 748 values, 684 changed, 64 NaN in both. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_moments` and the original: all pass, difference 0. New `tests/test_amplitude_moments.py` (closed-form formulas, the reference package's example, short, constant, NaN and +/-inf inputs) |
+| 3 | Band bins: each frequency band an independent closed interval (new `spectral_features.band_bins`), in all six band loops (`spectral_power`, `spectral_flatness`, `spectral_entropy`, `spectral_diff`, `connectivity_BSI`, `connectivity_coh`) and the total band of `gen_spectrum` (relative power, `spectral_edge_frequency`) | Chained rule, as in MATLAB NEURAL: the first band from `ceil(low * f)` to `floor(high * f)` (f = FFT bins per Hz); each later band from the previous band's last bin to `floor(high * f)`; indices clipped to [0, Nyquist], so a band above Nyquist repeated the Nyquist bin; no roundoff allowance. When an edge lay between bins, the later band also took the bin below its lower edge; gaps between disjoint bands were filled | Each band: bins `ceil(low * N / Fs)` to `floor(high * N / Fs)`, inclusive, independently of the other bands, with two floating-point steps allowed at each edge, at most the Nyquist bin (the reference package's `spectral.band_slice`). **This departs from MATLAB NEURAL's chained rule.** For bands that are not empty and not clipped at 0 or Nyquist, with no edge within about two floating-point steps of a bin, the two rules select the same bins exactly when, for every band after the first, `ceil(low * N / Fs)` equals the previous band's `floor(high * N / Fs)` (the two edges fall within the same bin step; usually one shared edge exactly on a bin); the first band's lower edge and the last band's upper edge do not matter. Exceptions: a band left empty under both rules can agree although the equation fails, and an edge within about two floating-point steps of a bin can agree or differ because of the two-step allowance. At 64 Hz with the default bands and windows this holds for every window-based spectrum; disjoint bands never satisfy it, and a non-integer sampling rate can break it for the default bands (63.93 Hz, 2 s window: theta started at bin 7, now 8). A band that a feature uses whose upper edge is not above its lower edge, or not below the Nyquist frequency, raises `ValueError` naming the band; a band with no bin gives NaN without warnings (details below). In the test data only `spectral_power` and `spectral_relative_power` change, and only in epochs that contain NaN (the periodogram is shortened by NaN removal): in the artefacts recording 108 of 168 values per feature, by up to 3.5 % (median 0.15 %), all lower; summary per band up to -0.42 % (`spectral_power`, theta) and -2.4 % (`spectral_relative_power`, theta); delta unchanged. The clean recording is unchanged | The reference package's `docs/definitions.md` documents independent closed intervals as the intended definition: "Feature conventions retained from version 0.1" (each band uses bins from `ceil(low * N / fs)` through `floor(high * N / fs)`, inclusive, with two floating-point steps for roundoff; shared boundary bins; a 4 Hz tone in a 16-second epoch at 98 Hz contributes bin 64 to both delta and theta). "NEURAL Python and MATLAB spectral comparison" (band bins: independent closed intervals in the reference package, chained in NEURAL Python and MATLAB; the chained loops can include a bin below the band's lower limit and fill gaps between disjoint bands). "Spectral details beyond the equations" (the paper's band sums include both endpoints; independent closed intervals follow that interpretation) | (a) `band_bins` against the reference package's `band_slice`: 61,864 band/length/rate cases (3,864 on and off the bin grid, 4,000 random off-grid bands, 54,000 edges within 4 floating-point steps of a bin; the two-step allowance changes the bins in over 21,000 of them): 0 differences. (b) `spectral_power` and `spectral_relative_power` against its `spectral_features()` on 38 NaN-free arrays (off-grid and on-grid lengths at 64 and 100 Hz; default, preterm, off-grid and disjoint bands; 1,140 values): max abs difference 1.7e-13, max rel 3.2e-15, 422 exactly equal (the previous rule: up to 6 % with preterm bands, and far more where an edge bin carried a strong component). (c) Exact comparison with the previous code (commit bac1c62) on all test cases: only `spectral_power` and `spectral_relative_power` change (342 of the 16,566 values compared, all lower; every other value is identical), only in epochs that contain NaN; the clean recording's 21 outputs are byte-identical. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_band_bins` and the original: all pass, difference 0. New `tests/test_band_bins.py`: the rule; `ValueError` for inverted, above-Nyquist and partly above-Nyquist bands and total bands, in each feature that uses the band; NaN without warnings for bands and total bands with no bin, and for coherence also with one 8 s window or an all-zero input; each feature checks only the bands it uses (the edge frequency needs no `freq_bands`, 27.5 Hz as before on the test signal); the exact FFT length in coherence (float16 sampling rate); the condition under which the two rules agree (3,000 seeded random draws); and, for every setting read from the stored reference files, identical values of the six other bin-based features under both rules |
 
 ## 1. Removal of 7 features
 
@@ -136,3 +137,178 @@ applies the fix sections in order: first the MATLAB `spectral_diff` fix
 (`with_neural_eeg_features_0.6.1_moments`). The tests therefore compare
 `spectral_diff` with the first, `amplitude_skew` and `amplitude_kurtosis` with
 the second, and every other feature with the original NEURAL's output.
+
+## 3. Band bins: independent closed intervals
+
+**Definition.** `spectral_features.band_bins(low, high, n_fft, Fs)` returns
+the one-sided FFT bins `ceil(low * n_fft / Fs)` to `floor(high * n_fft / Fs)`,
+inclusive, computed exactly as the reference package's `spectral.band_slice`:
+two floating-point steps are allowed at each edge for roundoff in the
+multiplication and division, the last bin is at most the Nyquist bin
+`n_fft // 2`, and each band is independent of the others. Adjacent bands share
+a bin that lies exactly on their common edge. All six band loops and the total
+band of `gen_spectrum` use it. For coherence the FFT length comes from
+`gen_cross_spectrum` (internal `connectivity_features._coherence`;
+`gen_coherence` still returns five values).
+
+**Departure from MATLAB NEURAL.** MATLAB NEURAL and the original Python port
+start each later band at the previous band's last bin. This change follows
+the reference package, whose `docs/definitions.md` documents independent
+closed intervals as the intended definition (see row 3), not MATLAB.
+
+**When the two rules agree.** For bands whose selections are not empty and
+not clipped (at bin 0 or the Nyquist bin), and whose edges are not within
+about two floating-point steps of a bin, the two rules select the same bins
+exactly when, for every band after the first, its first bin
+`ceil(low * N / Fs)` is the previous band's last bin `floor(high * N / Fs)`:
+the band's lower edge and the previous band's upper edge fall within the
+same bin step. The usual case is
+one shared edge exactly on a bin; overlapping bands whose edges round to the
+same bin also agree, and disjoint bands never do (the old rule filled the
+gap). The first band's lower edge and the last band's upper edge do not
+matter. This was checked on 39,912 random sets of 2 to 4 bands whose edges
+are either on bins or at least 1 % of a bin away from one, on grids where the
+bins are exact binary fractions (`tests/test_band_bins.py` repeats it on
+3,000 random draws; both checks leave out the cases below). Two exceptions
+lie outside this scope. A band left empty under both rules can agree even
+though the equation fails. And an edge within about two floating-point
+steps of a bin, for example a decimal edge meant to be on a bin that is not
+exact in binary, can agree or differ: `band_bins` allows two steps and
+computes `low * N / Fs`, the old rule allowed none and computed
+`low * (N / Fs)`. With 3 bands whose
+shared edges were meant to lie on bins, the rules still differed in 2,811 of
+4,000 random sets at 63.93 Hz with a 127-point FFT, and in 90 of 4,000 at
+64 Hz with 4000 points.
+
+**Where the bins differ in practice.** With the default bands at 64 Hz (the
+settings of the test data) the condition holds for every
+spectrum whose length is set by a window: 2 bins per Hz for the spectral
+features (2 s window), 8 for connectivity (8 s window), and 64 for the
+periodogram of a full 64 s epoch, at 64 Hz. The periodogram of
+`spectral_power` is computed on the epoch's samples after NaN removal, so its
+length, and with it the bins per Hz, changes when an epoch contains NaN; band
+edges can then fall between bins. Example at 64 Hz: 4000 samples (62.5 bins
+per Hz) gave alpha the extra bin 437 (6.992 Hz) and beta the extra bin 812
+(12.99 Hz); 3999 samples also gave theta the extra bin 249 (3.985 Hz). Custom
+bands whose edges are not on the bin grid are also affected, and so are
+disjoint bands, whose gap the old rule filled. A non-integer sampling rate
+can move even the default bands off the grid: at 63.93 Hz a 2 s window has
+127 samples (1.987 bins per Hz), and theta started at bin 7 (delta's last
+bin), now at bin 8 (`tests/test_band_bins.py`).
+
+**Unusable bands and bands with no bins.** A band whose upper edge is not
+above its lower edge, or not below the Nyquist frequency Fs / 2, is rejected
+before any computation with a `ValueError` that names it (e.g. `spectral
+freq_bands[1] [40, 50] Hz: the upper edge must be below the Nyquist frequency
+(32 Hz)`), as in the reference package. Each feature checks only the bands
+it uses: `freq_bands` for `spectral_power`, `spectral_relative_power`,
+`spectral_flatness`, `spectral_entropy`, `spectral_diff` and the connectivity
+features; the spectral `total_freq_bands` for `spectral_relative_power` and
+`spectral_edge_frequency`. So the edge frequency needs no `freq_bands`, as
+before. (The reference package checks every configured band for every
+feature.) Edges must also be finite numbers. The total band is computed
+(`gen_spectrum`, new keyword `total_band`) and checked only for the two
+features that use it, so even `total_freq_bands = [NaN, NaN]` leaves absolute
+power, flatness and entropy at their values. The checks are in `spectral_features.check_band`, called by
+`band_bins`, by the two total-band features, and by `main_spectral` and
+`main_connectivity` outside their error-masking `try`. A valid band that
+contains no bin gives NaN, without warnings. Measured per feature on the
+same synthetic 64 Hz signals in all three ("before" is commit bac1c62, the
+old rule; the reference package through `extract_features`; "the 7 band
+features" are all eight outputs except `spectral_edge_frequency`):
+
+| Case (bands; total band) | Reference package | Before | Now |
+| --- | --- | --- | --- |
+| `[[1, 2], [4.101, 4.102]]`; `[1, 4.102]`: second band has no bin | 7 band features NaN; SEF a value (its own settings: 3.41 Hz) | all values (the old rule took the previous band's last bin); SEF 3.5 Hz | 7 band features NaN, no warnings; SEF 3.5 Hz (it uses only the total band) |
+| `[[1, 2], [7, 4]]`; `[1, 4]`: inverted band | `ValueError` (band creation) | values; SEF 3.5 Hz | 7 band features `ValueError` naming the band; SEF 3.5 Hz (does not use `freq_bands`) |
+| `[[1, 2], [40, 50]]`; `[1, 50]`: band and total above Nyquist | `ValueError` ("upper edge must be below Nyquist") | values (Nyquist bin repeated); SEF 29.5 Hz | `ValueError` for all 8 (SEF: the total band) |
+| `[[1, 2], [30, 40]]`; `[1, 40]`: partly above Nyquist | `ValueError` | values; SEF 29.5 Hz | `ValueError` for all 8 (SEF: the total band) |
+| `[[4.101, 4.102]]`; `[4.101, 4.102]`: band and total band have no bin | NaN, all 8 | 7 features `ValueError` "Feature function not found"; SEF 0 Hz with a warning | NaN, all 8, no warnings |
+| default bands; `[40, 50]`: total band above Nyquist | not possible (the total band spans the bands) | values; SEF 32 Hz | `spectral_relative_power` and SEF `ValueError` naming `total_freq_bands`; the other 6 unchanged |
+| default bands; `[4.101, 4.102]`: total band has no bin | not possible | `spectral_relative_power` `ValueError` "Feature function not found", SEF 0 Hz with a warning (the new rule before this fix: relative power inf with a warning) | `spectral_relative_power` and SEF NaN, no warnings; the other 6 unchanged |
+
+Coherence is also NaN without warnings when no band has a bin and the input
+is a single 8 s window (the analytic threshold, which divides by zero then,
+is not computed), and for an all-zero input (the 0 / 0 coherence is computed
+under a local `np.errstate`, and empty means and medians are skipped). The
+all-zero input warned the same way before this change.
+
+Before this fix, the new rule alone gave such bands 0 (power), NaN with
+"Mean of empty slice" warnings (flatness, BSI, coherence), 0 with a
+divide-by-zero warning (entropy), and a crash in `spectral_diff` that
+`main_spectral` reported as "Feature function not found". With the default
+bands below Nyquist none of this applies, and no stored value changes.
+
+**Size of the change in the test data.** Only `spectral_power` and
+`spectral_relative_power` change, and only in epochs that contain NaN. In the
+artefacts recording every computed epoch contains some NaN: 108 of 168 values
+per feature change (delta, the first band, never does), by a median of 0.15 %
+and at most 3.5 %; the summary per band changes by 0, -0.42, -0.058 and
+-0.16 % (`spectral_power`) and 0, -2.4, -1.1 and -0.031 % (`spectral_relative_power`)
+for delta, theta, alpha and beta. In the edge cases (pre-existing NaN, +inf
+line) up to 0.42 %. Every changed value in the test data is lower. The clean
+recording is unchanged: its only NaN, the padding of the final epoch, leaves
+44 s (2816 samples, 44 bins per Hz), so the edges stay on bins.
+
+**Reference values.** `tests/make_reference.py` also runs the original NEURAL
+with only its band-bin selection (the band loop of `spectral_power` and the
+total band of `gen_spectrum`) replaced, in memory, by an independent copy of
+`band_slice`, and stores the `spectral_power` and `spectral_relative_power`
+values in a new section, `with_neural_eeg_features_0.6.1_band_bins`, of the
+clean, artefacts, edge cases and input types references.
+`neural_outputs.with_fixes` applies it after the other two sections. The other
+bin-based features get the same bins under both rules for every stored setting
+(64 Hz, the default bands, 2 s and 8 s windows; checked by
+`tests/test_band_bins.py`), so they are compared with the original. The
+"about" texts of the three fix sections in these four files now also state
+the order in which the tests apply them. The four files were remade with the
+original NEURAL (commit 78c9425) and the library versions in the script's
+header. The unchanged script first reproduced the committed files byte for
+byte. After undoing the new section, the new "about" entry and the added
+order text in the two existing "about" entries, each new file is
+byte-identical to the committed one (only those two lines changed; the rest
+is added). CI's drift guard passes on them. `reference_windows.json` (no
+`spectral_power`) is unchanged; the script keeps its original "about" text.
+
+**Measured gap in `spectral_diff`.** Before this change, both packages were
+run on the same 300 s synthetic recording (the regression tests' clean case,
+preprocessed by NEURAL_py: 8 bipolar channels at 64 Hz) with NEURAL_py-like
+settings in the reference package (64 s epochs with 50 % overlap; 2 s Hamming
+windows with 50 % overlap, no FFT padding; default bands). The summary gap was
+-8.4, -3.2, +10.1 and -2.8 % (delta to beta), and up to 25 % on single
+channels. The band-bin rule accounts for none of it (the bins are identical
+there). Dropping NEURAL_py's final, NaN-padded partial epoch (256-300 s) closes
+it exactly; on the 8 complete epochs, the 256 per-channel values agree to
+2.2e-15 relative.
+
+**Not changed here (possible later steps).**
+
+- Final partial epoch: `generate_all_features` also computes a final epoch
+  padded with NaN (kept if less than 50 % NaN); the reference package uses
+  complete epochs only. This affects every per-epoch feature and explains the
+  whole `spectral_diff` gap above. Planned as the next step.
+- NaN inside epochs: NEURAL_py removes NaN samples before a spectrum
+  (`gen_spectrum`; `spectral_power`, flatness, entropy, edge frequency) or
+  skips NaN windows (`spectral_diff`); the reference package returns NaN for a
+  spectral feature if the epoch contains any NaN.
+- Bartlett hop: NEURAL_py's PSD helper uses a hop of
+  `ceil((L - 1) * (1 - overlap / 100))`, so its Bartlett windows (0 % overlap,
+  the default connectivity method) overlap by one sample; the reference
+  package's are disjoint.
+- Bands with bins but no usable power, which the reference package also
+  gives as NaN: a band with a single bin gives `spectral_entropy` -inf with a
+  divide-by-zero warning (the reference package needs more than one bin);
+  zero power in a band or the total band (e.g. an all-zero signal) gives
+  flatness inf, relative power 0, entropy 0 and spectral edge frequency
+  0 Hz, with warnings.
+- Further band checks of the reference package: it also rejects a lower edge
+  of 0 or less and unordered or overlapping bands, and checks the amplitude,
+  rEEG and FD bands against Nyquist; NEURAL_py does not (those three use
+  filters, not FFT bins).
+- Warnings that remain with valid bands: coherence of a single 8 s window
+  (one segment: the analytic threshold divides by zero; also before this
+  change), and `connectivity_BSI` of an all-zero input (0 / 0 and an empty
+  mean); both give the same values as before.
+- `connectivity_BSI` with the periodogram method: the band bins use the FFT
+  length of the last channel's spectrum, which differs from the others when
+  channels lose different numbers of NaN samples (also before this change).

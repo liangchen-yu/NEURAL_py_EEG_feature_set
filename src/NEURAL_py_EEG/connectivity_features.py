@@ -112,14 +112,23 @@ def gen_coherence(x, y, Fs, param_st):
     :param y:
     :param Fs:
     :param param_st:
-    :return:
+    :return: c, pxx, pyy, f_scale, fp
     """
-    pxx = spectral_features.gen_spectrum(x, Fs, param_st)[0]
-    pyy = spectral_features.gen_spectrum(y, Fs, param_st)[0]
-    pxy, dum, f_scale, fp = gen_cross_spectrum(x, y, Fs, param_st)
+    return _coherence(x, y, Fs, param_st)[:5]
 
-    c = (np.abs(pxy) ** 2) / (pxx * pyy)
-    return c, pxx, pyy, f_scale, fp
+
+def _coherence(x, y, Fs, param_st):
+    """gen_coherence, also returning the FFT length Nfreq (from
+    gen_cross_spectrum) as a sixth value, for band_bins."""
+    pxx = spectral_features.gen_spectrum(x, Fs, param_st, total_band=False)[0]
+    pyy = spectral_features.gen_spectrum(y, Fs, param_st, total_band=False)[0]
+    pxy, Nfreq, f_scale, fp = gen_cross_spectrum(x, y, Fs, param_st)
+
+    # Where pxx * pyy is 0 (e.g. an all-zero input) the coherence is NaN (0/0)
+    # or inf, as before, but without numpy's RuntimeWarning.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        c = (np.abs(pxy) ** 2) / (pxx * pyy)
+    return c, pxx, pyy, f_scale, fp, Nfreq
 
 
 def rand_phase(x, N_iter=1):
@@ -244,8 +253,8 @@ def connectivity_BSI(
         x_epoch = x[k, :]
         x_epoch = np.delete(x_epoch, np.where(np.isnan(x_epoch))[0])
 
-        tmp, dum, f_scale, dum, fp = spectral_features.gen_spectrum(
-            x_epoch, Fs, params_st, 1
+        tmp, dum, f_scale, Nfreq, fp = spectral_features.gen_spectrum(
+            x_epoch, Fs, params_st, 1, total_band=False
         )
         if k == 0:
             X = np.zeros([N_channels, len(tmp)])
@@ -280,19 +289,11 @@ def connectivity_BSI(
         X_right = X[ipairs[1, 0], :]
 
     featx = np.zeros(N_freq_bands)
-    ibandpass = []  # to suppress warning
     for n in range(N_freq_bands):
-        if n == 0:
-            istart = np.ceil(freq_bands[n, 0] * f_scale).astype(int) - 1
-        else:
-            istart = ibandpass[-1] - 1
-
-        ibandpass = np.array(
-            range(istart, np.floor(freq_bands[n][1] * f_scale).astype(int))
-        )
-        ibandpass = ibandpass + 1
-        ibandpass[ibandpass < 0] = 0
-        ibandpass[ibandpass > N - 1] = N - 1
+        ibandpass = spectral_features.band_bins(freq_bands[n][0], freq_bands[n][1], Nfreq, Fs)
+        if ibandpass.size == 0:
+            featx[n] = np.nan  # a band with no bins (as neural_eeg_features 0.6.1)
+            continue
 
         featx[n] = np.nanmean(
             np.abs(
@@ -391,12 +392,20 @@ def connectivity_coh(
         x2 = np.delete(x2, np.where(np.isnan(x2))[0])
 
         # 1) estimage the coherence function
-        c, pxx, pyy, f_scale, fp = gen_coherence(
+        c, pxx, pyy, f_scale, fp, Nfreq = _coherence(
             x1, x2, Fs, params_st
         )  # Check size of coh
         if p == 0:
             coh = np.empty([N_pairs, len(c)])
         coh[p, :] = c
+
+        # the bins of each band (Nfreq is the exact FFT length from
+        # gen_cross_spectrum); if no band has a bin the result is NaN, without
+        # computing a threshold (as neural_eeg_features 0.6.1)
+        bins_per_band = [spectral_features.band_bins(freq_bands[n][0], freq_bands[n][1], Nfreq, Fs)
+                         for n in range(N_freq_bands)]
+        if not any(bins.size for bins in bins_per_band):
+            return np.full(N_freq_bands, np.nan)
 
         # 2) if estimating a zero-level threshold for the coherence:
         if params_st["coherence_zero_level"] == "surr":
@@ -448,26 +457,23 @@ def connectivity_coh(
             coh[p, coh[p, :] < coh_threshold] = 0  # Check this
 
         # compute the mean coherence for each frequency band (the max and
-        # max-frequency features were removed to match neural_eeg_features 0.6.1)
-        dum, N = coh.shape
-        ibandpass = []  # to suppress warning
-        for n in range(N_freq_bands):
-            if n == 0:
-                istart = np.ceil(freq_bands[n, 0] * f_scale).astype(int) - 1
-            else:
-                istart = ibandpass[-1] - 1
-
-            ibandpass = np.array(
-                range(istart, np.floor(freq_bands[n][1] * f_scale).astype(int))
-            )  # May need +1
-            ibandpass = ibandpass + 1
-            ibandpass[ibandpass < 0] = 0
-            ibandpass[ibandpass > N - 1] = N - 1
+        # max-frequency features were removed to match neural_eeg_features 0.6.1);
+        # a band with no bins, or only NaN coherence (e.g. an all-zero input),
+        # stays NaN without numpy's "Mean of empty slice" warning
+        for n, ibandpass in enumerate(bins_per_band):
+            values = coh[p, ibandpass]
+            if values.size == 0 or np.isnan(values).all():
+                continue
 
             if feat_name == "connectivity_coh_mean":
-                featx_pairs[n, p] = np.nanmean(coh[p, ibandpass])
+                featx_pairs[n, p] = np.nanmean(values)
 
-    featx = np.nanmedian(featx_pairs, 1)  # compare this
+    # median over pairs; a band with no value in any pair is NaN (without
+    # numpy's "All-NaN slice encountered" warning)
+    featx = np.full(N_freq_bands, np.nan)
+    has_value = ~np.isnan(featx_pairs).all(axis=1)
+    if has_value.any():
+        featx[has_value] = np.nanmedian(featx_pairs[has_value, :], 1)  # compare this
     return featx
 
 
@@ -747,6 +753,11 @@ def main_connectivity(x, Fs, feat_name, ch_labels, params=None):
         params = params["connectivity"]
 
     freq_bands = np.array(params["freq_bands"])
+    # Reject unusable bands before computing (as neural_eeg_features 0.6.1),
+    # outside the try below, which reports every error as "Feature function
+    # not found".
+    for n, band in enumerate(freq_bands):
+        spectral_features.check_band(band[0], band[1], Fs, "connectivity freq_bands[%d]" % n)
 
     N_channels, dum = x.shape
 

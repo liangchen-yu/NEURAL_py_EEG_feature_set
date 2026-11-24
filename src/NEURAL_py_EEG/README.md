@@ -15,13 +15,17 @@ available at https://arxiv.org/abs/1704.05694.
 
 ---
 
-[Requirements](#requirements) | [Use](#use) | [Quantitative
+[Requirements](#requirements-original-2020-release) | [Use](#use) | [Quantitative
 features](#quantitative-features) | [Files](#files) | [Test computer
 setup](#test-computer-setup) | [Licence](#licence) | [References](#references) |
 [Contact](#contact)
 
-## Requirements:
-Python 3.7 or newer with the following packages installed
+## Requirements (original 2020 release)
+The original 2020 release was developed with Python 3.7 and the packages below. This
+maintained package needs Python 3.14 or newer (`requires-python = ">=3.14"` in
+`pyproject.toml`, which also lists the current dependency versions).
+
+Packages used by the original 2020 release:
 | Package       | Version installed  |
 | ------------- |:------------------:|
 | mne           | 0.18.2             |
@@ -118,7 +122,15 @@ FB: features generated for each frequency band (FB)
 These are the 23 feature names of neural_eeg_features 0.6.1. Seven features of the original
 NEURAL were removed to match it: `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`,
 `rEEG_width`, `rEEG_SD`, `connectivity_coh_max` and `connectivity_coh_freqmax`; requesting one
-raises `ValueError`. `rEEG_CV` still uses the rEEG mean and standard deviation internally. See
+raises `ValueError`. `rEEG_CV` still uses the rEEG mean and standard deviation internally.
+As in neural_eeg_features 0.6.1, the spectral and connectivity features use, for each
+frequency band, the FFT bins of the closed interval [low, high] Hz, independently of the
+other bands (MATLAB NEURAL started each later band at the previous band's last bin; apart
+from empty bands and edges within floating-point rounding of a bin, the two select the
+same bins exactly when each later band's first bin is the previous band's last bin, usually
+because they share an edge that lies exactly on a bin). A band that a
+feature uses whose upper edge is not above its lower edge, or not below the Nyquist
+frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. See
 `docs/CHANGES_vs_neural_eeg_features_0.6.1.md` in the repository.
 
 

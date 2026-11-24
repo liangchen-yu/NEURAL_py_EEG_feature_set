@@ -309,10 +309,21 @@ FIX_SECTION = "with_matlab_fix_a279ddd"
 MOMENTS_FEATURES = ("amplitude_skew", "amplitude_kurtosis")
 MOMENTS_SECTION = "with_neural_eeg_features_0.6.1_moments"
 
+# spectral_power and spectral_relative_power: the band-bin rule of
+# neural_eeg_features 0.6.1 (each band an independent closed interval);
+# tests/test_band_bins.py checks it. Only these two features: the other
+# features that select bins by band (spectral_flatness, spectral_entropy,
+# spectral_diff, spectral_edge_frequency, connectivity_BSI,
+# connectivity_coh_mean) get the same bins under both rules for every
+# stored input (test_band_bins.py checks this too).
+BAND_BINS_FEATURES = ("spectral_power", "spectral_relative_power")
+BAND_BINS_SECTION = "with_neural_eeg_features_0.6.1_band_bins"
+
 # (section, features it holds), in the order with_fixes applies them.
 FIXES = (
     (FIX_SECTION, (FIXED_FEATURE,)),
     (MOMENTS_SECTION, MOMENTS_FEATURES),
+    (BAND_BINS_SECTION, BAND_BINS_FEATURES),
 )
 
 

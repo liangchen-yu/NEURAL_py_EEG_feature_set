@@ -3,8 +3,9 @@
     "what": "Reference values for tests/test_edge_cases.py from the original NEURAL with pandas 2.3.3 (see made_with): other kinds of row index, and read-only arrays. Steps: edge_cases.index_type_results and edge_cases.read_only_results.",
     "index_types": "The same EEG with a default, datetime, text, reversed-integer or 1000-based integer row index: generate_all_features (feats_median_all of all 26 non-IBI features), the preprocessing steps (artefact report and a fingerprint of the 64 Hz result) and preprocessing_EEG.overlap_epochs (a fingerprint of the epochs). {error, in_neural_function} records where the original stopped with an error.",
     "read_only": "connectivity_features.gen_coherence on two bipolar channels at 64 Hz. The original needs writable arrays, so these values were made with writable ones; the tests use read-only arrays (as pandas 3 gives) and expect the same values. inputs_unchanged: the input arrays were left unchanged.",
-    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values.",
-    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values."
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values.",
+    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values.",
+    "with_neural_eeg_features_0.6.1_band_bins": "spectral_power and spectral_relative_power values from the original NEURAL with only its band-bin selection (spectral_power, and the total band in gen_spectrum) replaced by the rule of neural_eeg_features 0.6.1: each band uses the FFT bins ceil(low * N / Fs) to floor(high * N / Fs), inclusive, independently of the other bands (two floating-point steps allowed at each edge; at most the Nyquist bin). The original started each later band at the previous band's last bin. At the same places as in the rest of this file. This repository uses that rule, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values."
   },
   "made_with": {
     "python": "3.14.7",
@@ -509,6 +510,28 @@
         "integers in reverse order": {
           "amplitude_skew": [0.06107933368287474,0.003400597982224139,0.003554544975905436,0.05186905590403315],
           "amplitude_kurtosis": [3.4094909869380645,3.127906210748781,3.2770022421996248,3.380797670533072]
+        }
+      }
+    }
+  },
+  "with_neural_eeg_features_0.6.1_band_bins": {
+    "index_types": {
+      "generate_all_features": {
+        "default 0, 1, 2, ...": {
+          "spectral_power": [152.60742811322802,59.86977091211544,55.67589127882448,130.43867701733802],
+          "spectral_relative_power": [0.37417731226692574,0.1523597338730599,0.13850702250574715,0.3283971718592913]
+        },
+        "datetime": {
+          "spectral_power": [152.60742811322802,59.86977091211544,55.67589127882448,130.43867701733802],
+          "spectral_relative_power": [0.37417731226692574,0.1523597338730599,0.13850702250574715,0.3283971718592913]
+        },
+        "text": {
+          "spectral_power": [152.60742811322802,59.86977091211544,55.67589127882448,130.43867701733802],
+          "spectral_relative_power": [0.37417731226692574,0.1523597338730599,0.13850702250574715,0.3283971718592913]
+        },
+        "integers in reverse order": {
+          "spectral_power": [143.19721540525012,61.9393747259857,54.414494323771464,132.18746626077248],
+          "spectral_relative_power": [0.37974956837865037,0.14999684551452053,0.1387582327785732,0.32366208662215956]
         }
       }
     }

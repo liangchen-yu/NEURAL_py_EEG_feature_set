@@ -70,6 +70,58 @@ def test_moments_section_holds_the_bias_corrected_values(raw_reference):
             assert finite.any() and np.all(fixed[finite] > original[finite])
 
 
+def epochs_with_nan(data):
+    """For the channels generate_all_features keeps (not all NaN), whether
+    each of its epochs contains NaN: [channel][epoch], as feats_per_epochs."""
+    import numpy as np
+    from NEURAL_py_EEG import NEURAL_parameters, generate_all_features
+
+    params = NEURAL_parameters.NEURAL_parameters()
+    eeg = data["eeg_data"]
+    kept = [c for c in data["ch_labels"] if not np.all(np.isnan(eeg[c]))]
+    return np.array([[np.isnan(epoch).any() for epoch in generate_all_features.overlap_epochs(
+        eeg[c], data["Fs"], params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])] for c in kept])
+
+
+def test_band_bins_section_differs_only_in_epochs_with_nan(raw_reference, run_preprocessing):
+    """The neural_eeg_features 0.6.1 band-bins section holds spectral_power and
+    spectral_relative_power only. In the STORED data, the bins change only
+    where NaN samples were removed from an epoch (the periodogram is then
+    shortened and band edges can fall between bins). Clean recording: every
+    value equals the original's exactly (its only NaN is the padding of the
+    final epoch, 44 s of data: 2816 samples, 44 bins per Hz, so the default
+    band edges stay on bins). Artefacts recording: each of the two features
+    changes, and only in channel-epochs that contain NaN. This checks the
+    stored data only (tests/test_band_bins.py checks the rule)."""
+    import numpy as np
+
+    for case in CASES:
+        section = raw_reference[case][neural_outputs.BAND_BINS_SECTION]
+        assert list(section["features"]) == list(neural_outputs.BAND_BINS_FEATURES)
+        has_nan = epochs_with_nan(run_preprocessing(case)[0])
+        for feature in neural_outputs.BAND_BINS_FEATURES:
+            fixed_all = section["features"][feature]
+            original_all = raw_reference[case]["features"][feature]
+            for output in ("feats_median_all", "feat_st", "feats_median_ch", "feats_per_epochs"):
+                fixed = neural_outputs.to_array(fixed_all[output])
+                original = neural_outputs.to_array(original_all[output])
+                assert np.array_equal(np.isnan(fixed), np.isnan(original)), (case, feature, output)
+            fixed = neural_outputs.to_array(fixed_all["feats_per_epochs"])
+            original = neural_outputs.to_array(original_all["feats_per_epochs"])
+            assert fixed.shape[:2] == has_nan.shape, (case, feature)
+            changed = ~((fixed == original) | (np.isnan(fixed) & np.isnan(original)))  # [channel][epoch][band]
+            changed_epochs = changed.any(axis=2)
+            assert not np.any(changed_epochs & ~has_nan), "%s %s changed in an epoch without NaN" % (case, feature)
+            if case == "clean":
+                assert has_nan.any(axis=0).tolist() == [False] * (has_nan.shape[1] - 1) + [True]  # final epoch only
+                assert not changed.any()
+                for output in ("feats_median_all", "feat_st", "feats_median_ch"):
+                    assert np.array_equal(neural_outputs.to_array(fixed_all[output]),
+                                          neural_outputs.to_array(original_all[output]), equal_nan=True)
+            else:
+                assert changed_epochs.any(), "%s: %s does not change" % (case, feature)
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_input_edf_is_byte_identical(case, reference):
     """The synthetic EDF made now is exactly the file the reference was made from."""

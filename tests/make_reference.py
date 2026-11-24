@@ -49,12 +49,22 @@ replaced, in memory, by the definitions of neural_eeg_features 0.6.1
 those definitions, so the tests compare the two features with these values.
 The windows file has no amplitude features, so it has no such section.
 
+The main, edge and inputs files also have a section
+"with_neural_eeg_features_0.6.1_band_bins": the spectral_power and
+spectral_relative_power values of the original with only its band-bin
+selection (in spectral_power and gen_spectrum) replaced, in memory, by the
+rule of neural_eeg_features 0.6.1: each band an independent closed interval
+(see with_neural_eeg_features_band_bins). This repository uses that rule, so
+the tests compare the two features with these values. The windows file has no
+spectral_power, so it has no such section.
+
 neural_outputs.with_fixes applies these sections in order: first the MATLAB
-spectral_diff fix (with_matlab_fix_a279ddd), then the 0.6.1 moments section.
-Every other feature is compared with the original NEURAL's output. (The
-"about" texts ABOUT_FIX and ABOUT_MOMENTS are written into the reference
+spectral_diff fix (with_matlab_fix_a279ddd), then the 0.6.1 moments section,
+then the 0.6.1 band-bins section. Every other feature is compared with the
+original NEURAL's output. (The "about" texts are written into the reference
 files; changing them means remaking the files, as the drift guard requires
-the committed and runner-made texts to be equal.)
+the committed and runner-made texts to be equal. The windows file, made in
+the 2020 environment and not remade, keeps its own text, ABOUT_FIX_WINDOWS.)
 
 GitHub Actions runs "main edge inputs" with the original code on each runner.
 The tests then compare the fork with those same-machine values, while a
@@ -103,10 +113,19 @@ ORIGINAL_SHA256 = {
     "utils.py": "128828611b30d87fc5534f0eaa62ab9b10936ed5598403e8c90807227db8923a",
 }
 
-ABOUT_FIX = ("spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit "
-             "a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes "
-             "np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository "
-             "includes that fix, so the tests compare its spectral_diff with these values.")
+# The text of reference_windows.json, made in the 2020 environment and not remade.
+ABOUT_FIX_WINDOWS = ("spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit "
+                     "a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes "
+                     "np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository "
+                     "includes that fix, so the tests compare its spectral_diff with these values.")
+
+# How the tests use the fix sections of the main, edge and inputs files.
+ABOUT_ORDER = (" The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd "
+               "(spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), "
+               "with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every "
+               "other feature is compared with the original's values.")
+
+ABOUT_FIX = ABOUT_FIX_WINDOWS + ABOUT_ORDER
 
 ABOUT_MOMENTS = ("amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two "
                  "functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected "
@@ -114,7 +133,16 @@ ABOUT_MOMENTS = ("amplitude_skew and amplitude_kurtosis values from the original
                  "scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than "
                  "3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest "
                  "of this file. This repository uses these definitions, so the tests compare the two features "
-                 "with these values.")
+                 "with these values." + ABOUT_ORDER)
+
+ABOUT_BAND_BINS = ("spectral_power and spectral_relative_power values from the original NEURAL with only its "
+                   "band-bin selection (spectral_power, and the total band in gen_spectrum) replaced by the "
+                   "rule of neural_eeg_features 0.6.1: each band uses the FFT bins ceil(low * N / Fs) to "
+                   "floor(high * N / Fs), inclusive, independently of the other bands (two floating-point "
+                   "steps allowed at each edge; at most the Nyquist bin). The original started each later "
+                   "band at the previous band's last bin. At the same places as in the rest of this file. "
+                   "This repository uses that rule, so the tests compare the two features with these values."
+                   + ABOUT_ORDER)
 
 ABOUT = {
     "what": "Reference values for tests/test_regression.py: the outputs of the original NEURAL "
@@ -132,6 +160,7 @@ ABOUT = {
     "null": "null means NaN (not a number), e.g. an epoch NEURAL skipped because it was mostly artefact.",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
+    neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
 }
 
 ABOUT_EDGE = {
@@ -154,6 +183,7 @@ ABOUT_EDGE = {
     "null": "null means NaN (not a number).",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
+    neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
 }
 
 ABOUT_INPUTS = {
@@ -171,6 +201,7 @@ ABOUT_INPUTS = {
                  "were left unchanged.",
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
+    neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
 }
 
 ABOUT_WINDOWS = {
@@ -181,7 +212,7 @@ ABOUT_WINDOWS = {
     "features": "Every feature whose result depends on the window type, computed with each window "
                 "(values), and how many times NEURAL's utils.get_window was asked for that window "
                 "type (window_calls; it must be more than 0).",
-    neural_outputs.FIX_SECTION: ABOUT_FIX,
+    neural_outputs.FIX_SECTION: ABOUT_FIX_WINDOWS,
 }
 
 
@@ -335,6 +366,84 @@ def moments_section(make):
         return neural_outputs.only_features(make(), neural_outputs.MOMENTS_FEATURES)
 
 
+def reference_band_bins(low, high, n_fft, fs):
+    """neural_eeg_features 0.6.1 (spectral.band_slice), written out
+    independently: the bins ceil(low * n_fft / fs) to floor(high * n_fft / fs),
+    inclusive, with two floating-point steps allowed at each edge, at most
+    n_fft // 2. (numpy's nextafter, so that this file also runs on Python 3.7.)"""
+    low = np.nextafter(np.nextafter(low * n_fft / fs, -np.inf), -np.inf)
+    high = np.nextafter(np.nextafter(high * n_fft / fs, np.inf), np.inf)
+    return np.arange(max(int(np.ceil(low)), 0), min(int(np.floor(high)), n_fft // 2) + 1)
+
+
+BAND_LOOP_ORIGINAL = """    ibandpass = []  # to suppress warning
+    for p in range(len(freq_bands)):
+        if p == 0:
+            istart = np.ceil(freq_bands[p][0] * f_scale).astype(int) - 1
+        else:
+            istart = ibandpass[-1] - 1
+
+        ibandpass = np.array(
+            range(istart, np.floor(freq_bands[p][1] * f_scale).astype(int))
+        )  # May need +1
+        ibandpass = ibandpass + 1
+        ibandpass[ibandpass < 0] = 0
+        ibandpass[ibandpass > Nh - 1] = Nh - 1
+"""
+BAND_LOOP_FIXED = """    for p in range(len(freq_bands)):
+        ibandpass = reference_band_bins(freq_bands[p][0], freq_bands[p][1], N, Fs)
+"""
+TOTAL_BAND_ORIGINAL = """        itotal_bandpass = np.array(
+            range(
+                np.ceil(total_freq_bands[0] * f_scale).astype(int),
+                np.floor(total_freq_bands[1] * f_scale).astype(int) + 1,
+            )
+        )
+        itotal_bandpass = itotal_bandpass  # + 1
+        itotal_bandpass[itotal_bandpass < 0] = 0
+        itotal_bandpass[itotal_bandpass > N - 1] = N - 1
+"""
+TOTAL_BAND_FIXED = """        itotal_bandpass = reference_band_bins(total_freq_bands[0], total_freq_bands[1], Nfreq, Fs)
+"""
+
+
+@contextlib.contextmanager
+def with_neural_eeg_features_band_bins():
+    """The original NEURAL with only its band-bin selection replaced, in
+    memory, by the rule of neural_eeg_features 0.6.1 (reference_band_bins):
+    the band loop of spectral_power and the total band of gen_spectrum (used
+    for relative power). The installed files are not changed."""
+    from NEURAL_py_EEG import spectral_features
+
+    originals = {"spectral_power": spectral_features.spectral_power,
+                 "gen_spectrum": spectral_features.gen_spectrum}
+    patched = {}
+    for name, old, new in (("spectral_power", BAND_LOOP_ORIGINAL, BAND_LOOP_FIXED),
+                           ("gen_spectrum", TOTAL_BAND_ORIGINAL, TOTAL_BAND_FIXED)):
+        source = inspect.getsource(originals[name])
+        if source.count(old) != 1:
+            raise SystemExit("No reference written: the band-bin code is not in the original %s." % name)
+        patched[name] = source.replace(old, new)
+    # main_spectral and spectral_power look these functions up in the module when called.
+    spectral_features.reference_band_bins = reference_band_bins
+    try:
+        for name, source in patched.items():
+            exec(compile(source, "<%s with neural_eeg_features 0.6.1 band bins>" % name, "exec"),
+                 vars(spectral_features))
+        yield
+    finally:
+        for name, function in originals.items():
+            setattr(spectral_features, name, function)
+        del spectral_features.reference_band_bins
+
+
+def band_bins_section(make):
+    """make() run again with the neural_eeg_features 0.6.1 band bins; only the
+    spectral_power and spectral_relative_power values are kept."""
+    with with_neural_eeg_features_band_bins():
+        return neural_outputs.only_features(make(), neural_outputs.BAND_BINS_FEATURES)
+
+
 def write_json(value, folder, name):
     path = Path(folder) / name
     with open(str(path), "w", encoding="utf-8", newline="\n") as f:
@@ -393,6 +502,9 @@ def make_main_reference(case, features, folder):
         neural_outputs.MOMENTS_SECTION: moments_section(lambda: {"features": {
             feature: neural_outputs.compute_features(data, [feature])[feature]
             for feature in neural_outputs.MOMENTS_FEATURES}}),
+        neural_outputs.BAND_BINS_SECTION: band_bins_section(lambda: {"features": {
+            feature: neural_outputs.compute_features(data, [feature])[feature]
+            for feature in neural_outputs.BAND_BINS_FEATURES}}),
     }
 
 
@@ -453,6 +565,8 @@ def make_edge(output):
         "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     reference[neural_outputs.MOMENTS_SECTION] = moments_section(lambda: {
         "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
+    reference[neural_outputs.BAND_BINS_SECTION] = band_bins_section(lambda: {
+        "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     print("edge cases: NaN artefact report %s; real +/-inf input: %s"
           % (reference["nan_input"]["artefact_report"]["percent_removed_worst_channel"], reference["inf_input"]))
     write_json(reference, output, "reference_edge_cases.json")
@@ -467,6 +581,8 @@ def make_inputs(output):
                  "read_only": edge_cases.read_only_results(read_only=False),
                  neural_outputs.FIX_SECTION: fix_section(lambda: {"index_types": edge_cases.index_type_results()}),
                  neural_outputs.MOMENTS_SECTION: moments_section(
+                     lambda: {"index_types": edge_cases.index_type_results()}),
+                 neural_outputs.BAND_BINS_SECTION: band_bins_section(
                      lambda: {"index_types": edge_cases.index_type_results()})}
     write_json(reference, output, "reference_input_types.json")
 

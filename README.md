@@ -136,7 +136,15 @@ FB: features generated for each frequency band (FB)
 These are the 23 feature names of neural_eeg_features 0.6.1. Seven features of the original
 NEURAL were removed to match it: `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`,
 `rEEG_width`, `rEEG_SD`, `connectivity_coh_max` and `connectivity_coh_freqmax`; requesting one
-raises `ValueError`. `rEEG_CV` still uses the rEEG mean and standard deviation internally. See
+raises `ValueError`. `rEEG_CV` still uses the rEEG mean and standard deviation internally.
+As in neural_eeg_features 0.6.1, the spectral and connectivity features use, for each
+frequency band, the FFT bins of the closed interval [low, high] Hz, independently of the
+other bands (MATLAB NEURAL started each later band at the previous band's last bin; apart
+from empty bands and edges within floating-point rounding of a bin, the two select the
+same bins exactly when each later band's first bin is the previous band's last bin, usually
+because they share an edge that lies exactly on a bin). A band that a
+feature uses whose upper edge is not above its lower edge, or not below the Nyquist
+frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. See
 [docs/CHANGES_vs_neural_eeg_features_0.6.1.md](docs/CHANGES_vs_neural_eeg_features_0.6.1.md).
 
 The NEURAL paper specifies Pearson correlation for `connectivity_corr` ([arXiv:1704.05694](https://arxiv.org/abs/1704.05694), Table B.3).
@@ -277,7 +285,19 @@ No default parameter was changed. Results differ from the original only:
   rose slightly (skewness +0.04-0.06 %, kurtosis +0.04-0.16 %). The skewness magnitude always
   increases with the correction (unless it is 0); the kurtosis usually does for EEG-like data
   but can decrease for very flat signals. The tests compare these two with the original plus
-  only the reference package's definitions;
+  only the reference package's definitions. Also, each frequency band now selects its FFT
+  bins as an independent closed interval (`spectral_features.band_bins`), instead of starting
+  at the previous band's last bin as MATLAB NEURAL does. Apart from empty bands and edges
+  within floating-point rounding of a bin, the two rules select the same bins exactly when
+  each later band's first bin is the previous band's last bin (usually a shared edge exactly
+  on a bin; disjoint bands never, and a non-integer sampling rate can move even
+  the default bands off the bin grid); in the test
+  data (64 Hz, default bands) the bins differ only for `spectral_power` and
+  `spectral_relative_power` in epochs that contain NaN (the artefacts recording; up to 3.5 %
+  per value, lower than before), and the tests compare these two with the original plus only
+  the new bin rule. A band that a feature uses with the upper edge not above the lower edge
+  or not below Nyquist now raises `ValueError`, and a band with no FFT bin gives NaN, as in
+  neural_eeg_features 0.6.1;
 - at the rates changed by the downsampling fix, and for recordings that are not a whole number
   of seconds at non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the ratio of the
   two rates, as in MATLAB, exact for whole-number rates);
@@ -307,7 +327,9 @@ run with the same library versions on the same computer:
   clean and an artefact-laden synthetic EDF file. `spectral_diff` is compared
   with the original plus the MATLAB a279ddd fix, `amplitude_skew` and
   `amplitude_kurtosis` with the original plus the neural_eeg_features 0.6.1
-  definitions (see above), every other value with the original itself;
+  definitions, `spectral_power` and `spectral_relative_power` with the
+  original plus the neural_eeg_features 0.6.1 band-bin rule (see above),
+  every other value with the original itself;
 - data that already contain NaN when given to `remove_artefacts`: the
   artefact report, every feature's summary values (one per frequency band;
   per-channel and per-epoch values are not stored for this case), sampled
@@ -463,7 +485,11 @@ reference values for each group.
   `amplitude_skew` and `amplitude_kurtosis` with values the same run makes
   with the original plus only the bias-corrected definitions of
   neural_eeg_features 0.6.1 (not in the window reference, which has no
-  amplitude features).
+  amplitude features); `spectral_power` and `spectral_relative_power` with
+  values the same run makes with the original plus only the band-bin rule of
+  neural_eeg_features 0.6.1 (not in the window reference, which has no
+  `spectral_power`). The tests apply these three sets of values in that
+  order; each file's "about" text states it.
 - Comparison: the tests check every stored value, allowing a relative
   difference of 1e-9 (absolute 1e-12) so that they can also run with other
   library versions; NaN must be NaN in both, and counts, positions and text
