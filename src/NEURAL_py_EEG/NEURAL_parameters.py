@@ -2,6 +2,34 @@
 # Date started: 17/02/2020
 # Last updated: <17/02/2020 12:42:22 (BrianM)>
 
+# Feature names removed to match neural_eeg_features 0.6.1 (see
+# docs/CHANGES_vs_neural_eeg_features_0.6.1.md). Requesting one raises
+# ValueError. rEEG_CV still uses the rEEG mean and SD internally.
+REMOVED_FEATURES = (
+    'amplitude_total_power',
+    'amplitude_SD',
+    'rEEG_mean',
+    'rEEG_width',
+    'rEEG_SD',
+    'connectivity_coh_max',
+    'connectivity_coh_freqmax',
+)
+
+
+def check_feature_names(feat_names):
+    """Raise ValueError if any name in feat_names (a list of names, or one
+    name) is in REMOVED_FEATURES. Other names are not checked here."""
+    if isinstance(feat_names, str):
+        feat_names = [feat_names]
+    removed = [name for name in feat_names if name in REMOVED_FEATURES]
+    if removed:
+        raise ValueError(
+            "Feature(s) %s removed to match neural_eeg_features 0.6.1; "
+            "see docs/CHANGES_vs_neural_eeg_features_0.6.1.md"
+            % ", ".join(repr(name) for name in removed)
+        )
+
+
 def NEURAL_parameters():
     """
     This function is to generate all the default NEURAL parameters
@@ -76,6 +104,8 @@ def NEURAL_parameters():
     Features
     ---------------------------------------------------------------------
     '''
+    # The 23 feature names of neural_eeg_features 0.6.1 (same order). The
+    # names in REMOVED_FEATURES (below) are no longer accepted.
     params['FEATURE_SET_ALL'] = [
         'spectral_power'
         , 'spectral_relative_power'
@@ -84,8 +114,6 @@ def NEURAL_parameters():
         , 'spectral_entropy'
         , 'spectral_edge_frequency'
         , 'FD'
-        , 'amplitude_total_power'
-        , 'amplitude_SD'
         , 'amplitude_skew'
         , 'amplitude_kurtosis'
         , 'amplitude_env_mean'
@@ -93,14 +121,9 @@ def NEURAL_parameters():
         , 'connectivity_BSI'
         , 'connectivity_corr'
         , 'connectivity_coh_mean'
-        , 'connectivity_coh_max'
-        , 'connectivity_coh_freqmax'
-        , 'rEEG_mean'
         , 'rEEG_median'
         , 'rEEG_lower_margin'
         , 'rEEG_upper_margin'
-        , 'rEEG_width'
-        , 'rEEG_SD'
         , 'rEEG_CV'
         , 'rEEG_asymmetry'
         , 'IBI_length_max'

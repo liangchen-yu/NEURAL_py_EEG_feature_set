@@ -9,16 +9,6 @@ from NEURAL_py_EEG import utils
 from NEURAL_py_EEG import NEURAL_parameters
 
 
-def amplitude_total_power(data):
-    """Pass in an array or list and return the signal power (average of the
-    squared values). Ignores NaN. Units: input units squared.
-
-    >amplitude_total_power([3,7,8,9,1])
-    40.8
-    """
-    return np.nanmean(np.abs(data) ** 2)
-
-
 def amplitude_env_mean(data):
     """Pass in an array or list and return the average power of the signal's
     envelope, its smooth outline (squared Hilbert envelope). Any NaN gives NaN.
@@ -29,16 +19,6 @@ def amplitude_env_mean(data):
     """
     squared_envelope = np.abs(signal.hilbert(data)) ** 2
     return np.nanmean(squared_envelope)
-
-
-def amplitude_SD(data):
-    """Pass in an array or list and return how much the signal spreads around
-    its average (sample standard deviation). Ignores NaN. Units: same as input.
-
-    >amplitude_SD([3,7,8,9,1])
-    3.4351
-    """
-    return np.nanstd(data, ddof=1)
 
 
 def amplitude_env_SD(data):
@@ -81,9 +61,10 @@ def main_amplitude(x, Fs, feat_name, params=None):
     Inputs:
         x          - epoch of EEG data (1-D array of N samples)
         Fs         - sampling frequency (in Hz)
-        feat_name  - amplitude feature to calculate, e.g. 'amplitude_total_power';
+        feat_name  - amplitude feature to calculate, e.g. 'amplitude_env_mean';
                      see the 'amplitude_' features in FEATURE_SET_ALL
-                     (NEURAL_parameters.py)
+                     (NEURAL_parameters.py). 'amplitude_total_power' and
+                     'amplitude_SD' were removed (ValueError)
         params     - amplitude settings (dictionary); None or empty uses the
                      NEURAL defaults. Reads 'freq_bands' and
                      'FILTER_REPLACE_ARTEFACTS'
@@ -105,6 +86,8 @@ def main_amplitude(x, Fs, feat_name, params=None):
 
         featx = amplitude_features.main_amplitude(x, Fs, 'amplitude_env_mean')
     """
+    NEURAL_parameters.check_feature_names(feat_name)
+
     if params is None:
         params = NEURAL_parameters.NEURAL_parameters()
         if "amplitude" in params:

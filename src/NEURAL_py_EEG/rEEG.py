@@ -65,19 +65,6 @@ def gen_rEEG(data, win_overlap, win_length, win_type, fs, APPLY_LOG_LINEAR_SCALE
     return reeg
 
 
-def rEEG_mean(reeg):
-    """
-    (list) -> float
-
-    pass in the reeg and return the mean value
-
-    >rEEG_mean([2,3,4])
-    3
-    
-    """
-    return np.nanmean(reeg)
-
-
 def rEEG_median(reeg):
     """
     (list) -> float
@@ -118,37 +105,12 @@ def rEEG_upper_margin(reeg):
     return mat_percentile(reeg, 95)
 
 
-def rEEG_width(reeg):
-    """
-    (list) -> float
-
-    pass in the reeg and return the bandwidth
-
-    >rEEG_width([2,3,4,5,6,9,9])
-    7
-
-    """
-    return rEEG_upper_margin(reeg) - rEEG_lower_margin(reeg)
-
-
-def rEEG_SD(reeg):
-    """
-    (list) -> float
-
-    pass in the reeg and return the standard deviation
-
-    >rEEG_SD([2,3,4,5,6,9,9])
-    2.7603
-
-    """
-    return np.nanstd(reeg, ddof=1)
-
-
 def rEEG_CV(reeg):
     """
     (list) -> float
 
-    pass in the reeg and return the coefficient of variance
+    pass in the reeg and return the coefficient of variation: sample SD / mean,
+    both calculated here (rEEG_SD and rEEG_mean are no longer features)
 
     >rEEG_CV([2,3,4,5,6,9,9])
     0.5085
@@ -179,8 +141,10 @@ def main_rEEG(x, Fs, feat_name, params=None):
     Inputs:
         x          - epoch of EEG data (size 1 x N)
         Fs         - sampling frequency (in Hz)
-        feat_name  - feature type, defaults to 'rEEG_mean';
-                     see full list of 'rEEG_' features in params['FEATURE_SET_ALL']
+        feat_name  - feature type, e.g. 'rEEG_median';
+                     see full list of 'rEEG_' features in params['FEATURE_SET_ALL'].
+                     'rEEG_mean', 'rEEG_width' and 'rEEG_SD' were removed
+                     (ValueError)
         params  - parameters (as dictionary);
                      see NEURAL_parameters() for examples
     
@@ -194,13 +158,15 @@ def main_rEEG(x, Fs, feat_name, params=None):
         data_st = utils.gen_test_EEGdata(32, Fs, 1)
         x = data_st['eeg_data'][data_st['ch_labels'][0]].values
     
-        featx = rEEG.main_rEEG(x, Fs, 'rEEG_width')
+        featx = rEEG.main_rEEG(x, Fs, 'rEEG_CV')
 
 
     [1] D Oâ€™Reilly, MA Navakatikyan, M Filip, D Greene, & LJ Van Marter (2012). Peak-to-peak
     amplitude in neonatal brain monitoring of premature infants. Clinical Neurophysiology,
     123(11), 2139â€“53.
     """
+    NEURAL_parameters.check_feature_names(feat_name)
+
     if params is None:
         params = NEURAL_parameters.NEURAL_parameters()
         if "rEEG" in params:

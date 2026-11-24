@@ -47,8 +47,20 @@ INF_RUNS = [("F3_C3", 1000, 1010, np.inf), ("F3_C3", 2000, 2005, -np.inf), ("C4_
 WINDOW_TYPES = ["tuke", "bart", "blackmanharris"]
 # The features whose result depends on the window type (see window_results)
 SPECTRAL_WINDOW_FEATURES = ["spectral_flatness", "spectral_entropy", "spectral_diff", "spectral_edge_frequency"]
+# The original's 8 rEEG features (all in reference_windows.json); this
+# repository has 5 of them (see reeg_features).
 REEG_FEATURES = ["rEEG_mean", "rEEG_median", "rEEG_lower_margin", "rEEG_upper_margin", "rEEG_width",
                  "rEEG_SD", "rEEG_CV", "rEEG_asymmetry"]
+
+
+def reeg_features():
+    """The REEG_FEATURES that the NEURAL in use still has: all 8 in the
+    original, 5 in this repository (rEEG_mean, rEEG_width and rEEG_SD were
+    removed to match neural_eeg_features 0.6.1)."""
+    from NEURAL_py_EEG import NEURAL_parameters
+
+    available = NEURAL_parameters.NEURAL_parameters()["FEATURE_SET_ALL"]
+    return [feature for feature in REEG_FEATURES if feature in available]
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +128,8 @@ def remove_artefacts(ref, bip):
 
 def downstream(cleaned):
     """The rest of main_preprocessing (low-pass filter, downsample to 64 Hz)
-    and all 26 non-IBI features in one generate_all_features call. Returns the
+    and all non-IBI features (26 in the original, 19 here) in one
+    generate_all_features call. Returns the
     64 Hz data and each feature's summary (median over channels and epochs,
     one value per frequency band); fingerprints of the data check the rest."""
     from NEURAL_py_EEG import preprocessing_EEG
@@ -295,7 +308,8 @@ def window_results():
       - spectral_flatness, spectral_entropy, spectral_diff and
         spectral_edge_frequency (spectral_power and spectral_relative_power
         use a periodogram, which has no window, so they are left out);
-      - the 8 rEEG features, without the frequency-band filter
+      - the rEEG features (8 in the original, 5 here: reeg_features),
+        without the frequency-band filter
         (freq_bands = [], a path NEURAL supports): the window is then the
         only thing that matters, so the comparison with the 2020 environment
         is not blurred by the band filter's last-digit rounding;
@@ -329,7 +343,7 @@ def window_results():
             params = fresh("spectral", kind)
             features["%s, %s window" % (feature, kind)] = windowed(
                 kind, lambda: spectral_features.main_spectral(x.copy(), 64, feature, params))
-        for feature in REEG_FEATURES:
+        for feature in reeg_features():
             params = fresh("rEEG", kind)
             params["freq_bands"] = []
             features["%s, %s window" % (feature, kind)] = windowed(
@@ -401,7 +415,8 @@ def epochs_fingerprint(x_epochs, x_epochs_inds):
 
 def index_type_results():
     """The same EEG with other kinds of row index (datetime, text, integers in
-    another order), through generate_all_features (all 26 non-IBI features),
+    another order), through generate_all_features (all non-IBI features: 26
+    in the original, 19 here),
     the preprocessing steps (remove_artefacts, low-pass filter, downsampling;
     clean data, so nothing is removed) and preprocessing_EEG.overlap_epochs.
     pandas < 3 picked samples by position for a datetime or text index and by

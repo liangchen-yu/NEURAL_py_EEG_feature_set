@@ -26,9 +26,9 @@ FEATURES = [
     "connectivity_BSI",
     "connectivity_corr",
     "connectivity_coh_mean",
-    "connectivity_coh_max",
-    "connectivity_coh_freqmax",
 ]
+# connectivity_coh_max and connectivity_coh_freqmax were also tested here;
+# they were removed to match neural_eeg_features 0.6.1.
 N_BANDS = len(NEURAL_parameters.NEURAL_parameters()["connectivity"]["freq_bands"])
 
 # 8-channel results of the code before the fix (commit 5c98791) on the input
@@ -37,8 +37,6 @@ BEFORE_FIX_8_CHANNELS = {
     "connectivity_BSI": [0.09515272147710148, 0.16261624341324804, 0.11367511201690306, 0.1254726208695133],
     "connectivity_corr": [0.564449488108129, 0.442008107866694, 0.514278679749087, 0.43687027383538074],
     "connectivity_coh_mean": [0.343306016862116, 0.34162271189851795, 0.4054417832353553, 0.33653316636455693],
-    "connectivity_coh_max": [0.8173391497512327, 0.7396570093120776, 0.8538370113878103, 0.8117372756253592],
-    "connectivity_coh_freqmax": [2.0, 5.75, 10.625, 22.375],
 }
 
 
@@ -160,9 +158,7 @@ def test_eight_channels_unchanged(eeg, feature):
     tests/neural_outputs.py (rtol 1e-9, atol 1e-12; NaN must match NaN).
     Exact bytes are not required, because they differ across machines:
     rounding in the last bits, up to about 2e-10 relative on GitHub's Ubuntu
-    runners. connectivity_coh_freqmax lies on a grid of 0.125 Hz or more, far
-    wider than this tolerance, so the same check still catches a different
-    grid point."""
+    runners."""
     x, labels = eeg
     result = connectivity(x.copy(), np.array(labels), feature)
     expected = np.array(BEFORE_FIX_8_CHANNELS[feature], dtype=np.float64)

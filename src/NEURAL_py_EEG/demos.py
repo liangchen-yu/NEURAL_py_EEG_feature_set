@@ -63,7 +63,7 @@ def generate_a_subset_of_features_example():
     data_st = utils.gen_test_EEGdata(5 * 60, Fs, 1)
 
     # define feature set (or can define in utils.NEURAL_parameters):
-    feature_set = ["spectral_relative_power", "rEEG_SD", "connectivity_BSI"]
+    feature_set = ["spectral_relative_power", "rEEG_CV", "connectivity_BSI"]
     print("Feature set: %s" % feature_set)
 
     # estimate features:

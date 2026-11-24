@@ -12,7 +12,36 @@ with three or more frequency bands or `method = 'katz'` (and `main_fd`, called d
 accepts the empty `[]` and single-row `[[low, high]]` band layouts, which raised `IndexError`
 before), for band-pass and high-pass filters
 built by `utils.filter_zerophase` (not used by the default pipeline), and for two connectivity
-edge cases (see the `connectivity_features` entry); the tests in `tests/` check this.
+edge cases (see the `connectivity_features` entry); the tests in `tests/` check this. Seven
+features were removed (see "Changes to match neural_eeg_features 0.6.1"); the remaining ones
+are unchanged.
+
+### Changes to match neural_eeg_features 0.6.1
+The reference package neural_eeg_features 0.6.1 revises the NEURAL feature set. Its changes are
+ported one at a time; each is listed, with before, after, reason and verification, in
+`docs/CHANGES_vs_neural_eeg_features_0.6.1.md`.
+- **Seven features removed** (as in the reference package): `amplitude_total_power`,
+  `amplitude_SD`, `rEEG_mean`, `rEEG_width`, `rEEG_SD`, `connectivity_coh_max` and
+  `connectivity_coh_freqmax`. `FEATURE_SET_ALL` now has the reference package's 23 names, in
+  the same order (19 non-IBI features; with the default bands, 74 feature columns instead of
+  102). Requesting a removed name, in `generate_all_features` or in `main_amplitude`,
+  `main_rEEG` or `main_connectivity`, raises `ValueError` naming it
+  (`NEURAL_parameters.REMOVED_FEATURES`, `NEURAL_parameters.check_feature_names`). The public
+  functions `amplitude_features.amplitude_total_power`, `amplitude_features.amplitude_SD`,
+  `rEEG.rEEG_mean`, `rEEG.rEEG_width` and `rEEG.rEEG_SD` are deleted (nothing else used them);
+  the coherence max and max-frequency branches of `connectivity_features.connectivity_coh` are
+  removed. Kept internally: `rEEG_CV` still computes the rEEG sample SD / mean, `rEEG_asymmetry`
+  the margins and median, and `connectivity_coh_mean` the shared coherence calculation.
+  - `generate_all_features`: `feats_median_ch` still keeps the first 98 columns (`[:98]`
+    unchanged). The same explicit feature list gives the same `feats_median_ch` columns as
+    before. A default call (`feat_set=None`) changes from 98 to 74 columns: the 28 columns of
+    the removed features (7 features x 4 bands) are gone, and as the full set now has only 74
+    columns, the 4 IBI columns (always NaN in `feats_median_ch`) now fall inside `[:98]`; before,
+    the full set had 102 columns and `[:98]` kept only the non-IBI ones.
+  - Remaining features: values unchanged (exact comparison with the previous code on all test
+    cases). The regression tests skip the removed features; the reference files in
+    `tests/data/` are unchanged and still hold them. New: `tests/test_removed_features.py`.
+  - Examples (README, `demos.py`, docstrings) use `rEEG_CV` instead of `rEEG_SD`.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit

@@ -9,6 +9,9 @@ tolerance (see neural_outputs.RTOL and ATOL). Run with:  pytest
 spectral_diff is compared, with the same tolerance, with the values of the
 original plus the one-line MATLAB fix a279ddd, which make_reference.py stores
 in the same reference files (neural_outputs.with_matlab_fix).
+
+The 7 features removed to match neural_eeg_features 0.6.1 are still in the
+reference files; the tests skip them (neural_outputs.without_removed_features).
 """
 import pytest
 
@@ -26,11 +29,18 @@ def test_reference_was_made_with_the_original_neural(reference):
         assert made_with["neural_has_pandas3_fix"] is False
 
 
-def test_reference_has_all_26_non_ibi_features(reference):
+def test_reference_has_the_originals_26_non_ibi_features(raw_reference, reference):
+    """The reference files hold the original's 26 non-IBI features; this
+    repository has the same features, in the same order, without the 7 removed
+    to match neural_eeg_features 0.6.1, and the tests compare exactly those."""
     features = neural_outputs.non_ibi_features()
-    assert len(features) == 26
+    assert len(features) == 19
     assert {neural_outputs.feature_group(f) for f in features} == set(neural_outputs.GROUPS)
     for case in CASES:
+        original = list(raw_reference[case]["features"])
+        assert len(original) == 26
+        assert set(neural_outputs.REMOVED_FEATURES) <= set(original)
+        assert [f for f in original if f not in neural_outputs.REMOVED_FEATURES] == features
         assert list(reference[case]["features"]) == features
 
 
@@ -85,9 +95,9 @@ def test_feature_group_matches(case, group, run_preprocessing, reference):
 
 @pytest.mark.parametrize("case", CASES)
 def test_all_features_in_one_call_match(case, run_preprocessing, reference):
-    """All 26 features in one generate_all_features call (the usual way)."""
+    """All 19 non-IBI features in one generate_all_features call (the usual way)."""
     data = run_preprocessing(case)[0]
     results = neural_outputs.compute_features(data, neural_outputs.non_ibi_features())
     for feature, new in results.items():
         neural_outputs.compare_feature(new, reference[case]["features"][feature], case,
-                                       "all 26 in one call", feature)
+                                       "all 19 in one call", feature)

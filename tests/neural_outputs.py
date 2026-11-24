@@ -34,11 +34,48 @@ def feature_group(feature):
 
 
 def non_ibi_features():
-    """NEURAL's list of all features, without the IBI ones (26 features)."""
+    """NEURAL's list of all features, without the IBI ones: 26 in the original
+    NEURAL (which made the reference files), 19 in this repository."""
     from NEURAL_py_EEG import NEURAL_parameters
 
     return [feature for feature in NEURAL_parameters.NEURAL_parameters()["FEATURE_SET_ALL"]
             if feature_group(feature) != "IBI"]
+
+
+# ---------------------------------------------------------------------------
+# Features removed to match neural_eeg_features 0.6.1
+# ---------------------------------------------------------------------------
+# The reference files (made by the original NEURAL) still hold these 7
+# features; this repository no longer computes them, so the tests drop them
+# from the reference values they load (without_removed_features). Written out
+# here, not read from NEURAL, so that make_reference.py and the tests do not
+# depend on the code under test for this list.
+REMOVED_FEATURES = (
+    "amplitude_total_power",
+    "amplitude_SD",
+    "rEEG_mean",
+    "rEEG_width",
+    "rEEG_SD",
+    "connectivity_coh_max",
+    "connectivity_coh_freqmax",
+)
+
+
+def is_removed_feature(key):
+    """True for a removed feature's name, or a key that starts with it and a
+    comma (e.g. "rEEG_SD, tuke window")."""
+    return any(key == name or key.startswith(name + ",") for name in REMOVED_FEATURES)
+
+
+def without_removed_features(tree):
+    """A copy of tree (reference values as loaded from JSON) without the
+    dictionary entries of the removed features, at any depth."""
+    if isinstance(tree, dict):
+        return {key: without_removed_features(value) for key, value in tree.items()
+                if not is_removed_feature(key)}
+    if isinstance(tree, list):
+        return [without_removed_features(item) for item in tree]
+    return tree
 
 
 # ---------------------------------------------------------------------------

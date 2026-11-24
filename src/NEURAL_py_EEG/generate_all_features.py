@@ -118,7 +118,8 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
         channel_names  - channel labels to process (default, process all)
                          e.g. ['C3-O1','C4-O2','F3-C3','F4-C4']
         feat_set       - list of features to compute,
-                         e.g. ['spectral_relative_power','rEEG_SD', 'connectivity_BSI']
+                         e.g. ['spectral_relative_power','rEEG_CV', 'connectivity_BSI'];
+                         a name in NEURAL_parameters.REMOVED_FEATURES raises ValueError
 
     Outputs:
         feats_per_epochs - features estimated over all epochs
@@ -135,7 +136,7 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
         data_st = utils.gen_test_EEGdata(5 * 60, 64, 1)
 
         # select features to compute:
-        feature_set = ['spectral_relative_power', 'rEEG_SD', 'connectivity_BSI']
+        feature_set = ['spectral_relative_power', 'rEEG_CV', 'connectivity_BSI']
 
         # generate all features:
         feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all =
@@ -189,6 +190,7 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
     # ---------------------------------------------------------------------
     if feat_set is None:
         feat_set = params["FEATURE_SET_ALL"]
+    NEURAL_parameters.check_feature_names(feat_set)
 
     N_feats = len(feat_set)
 
@@ -203,7 +205,8 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
     feats_median_all = pd.DataFrame(data=tmp1, columns=feat_pd_names)
     feats_median_ch = pd.DataFrame(
         data=tmp2[:, :98], columns=feat_pd_names[:98]
-    )  # all names except IBI
+    )  # keeps the first 98 columns; with the 23-name default set (74 columns)
+    # this includes the 4 IBI columns, which stay NaN here
 
     feat_st = dict()
     for n in range(N_feats):

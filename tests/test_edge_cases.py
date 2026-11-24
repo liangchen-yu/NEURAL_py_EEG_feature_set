@@ -33,7 +33,10 @@ pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
 
 def load(name):
-    return neural_outputs.with_matlab_fix(json.loads((DATA / name).read_text(encoding="utf-8")))
+    """A reference file with the MATLAB fix, without the 7 features removed to
+    match neural_eeg_features 0.6.1 (the files still hold them)."""
+    return neural_outputs.without_removed_features(
+        neural_outputs.with_matlab_fix(json.loads((DATA / name).read_text(encoding="utf-8"))))
 
 
 @pytest.fixture(scope="module")
@@ -122,5 +125,5 @@ def test_window_types_match_2020_original(windows):
     # comparison would pass without testing anything).
     for name, entry in new["features"].items():
         assert entry["window_calls"] > 0, "%s did not use its window" % name
-    assert len(new["features"]) == 3 * (len(edge_cases.SPECTRAL_WINDOW_FEATURES) + len(edge_cases.REEG_FEATURES) + 1)
+    assert len(new["features"]) == 3 * (len(edge_cases.SPECTRAL_WINDOW_FEATURES) + len(edge_cases.reeg_features()) + 1)
     check(new, windows["windows"], "window types", case="2020 env.")

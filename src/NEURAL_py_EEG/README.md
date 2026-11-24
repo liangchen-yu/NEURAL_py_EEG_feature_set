@@ -40,14 +40,14 @@ Set path `(path_to_NEURAL_py)` to the folder location of NEURAL_py. Then the fol
   import utils,  preprocessing_EEG, generate_all_features
 ```
 
-As an example, generate simulated EEG and calculate relative spectral power, standard
-deviation of range-EEG, and brain symmetry index:
+As an example, generate simulated EEG and calculate relative spectral power, coefficient
+of variation of range-EEG, and brain symmetry index:
 ```
   # generate EEG-like data (coloured Gaussian noise)
   data_st = utils.gen_test_EEGdata(5*60,64,1)
 
   # define feature set (or can define in neural_parameters.m):
-  feature_set = ['spectral_relative_power','rEEG_SD', 'connectivity_BSI']
+  feature_set = ['spectral_relative_power','rEEG_CV', 'connectivity_BSI']
   
   # estimate features:
   feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all = generate_all_features.generate_all_features(data_st, feat_set=feature_set)
@@ -96,8 +96,6 @@ in more detail:
 | spectral\_diff             | difference between consecutive short-time spectral estimates                  | yes |
 | spectral\_edge\_frequency  | cut-off frequency (fc): 95% of spectral power contained between 0.5 and fc Hz | no  |
 | FD                         | fractal dimension                                                             | yes |
-| amplitude\_total\_power    | time-domain signal: total power                                               | yes |
-| amplitude\_SD              | time-domain signal: standard deviation                                        | yes |
 | amplitude\_skew            | time-domain signal: skewness (absolute value)                                 | yes |
 | amplitude\_kurtosis        | time-domain signal: kurtosis                                                  | yes |
 | amplitude\_env\_mean       | envelope: mean value                                                          | yes |
@@ -105,14 +103,9 @@ in more detail:
 | connectivity\_BSI          | brain symmetry index (see Van Putten 2007)                                    | yes |
 | connectivity\_corr         | correlation (Pearson) between envelopes of hemisphere-paired channels         | yes |
 | connectivity\_coh\_mean    | coherence: mean value                                                         | yes |
-| connectivity\_coh\_max     | coherence: maximum value                                                      | yes |
-| connectivity\_coh\_freqmax | coherence: frequency of maximum value                                         | yes |
-| rEEG\_mean                 | range EEG: mean                                                               | yes |
 | rEEG\_median               | range EEG: median                                                             | yes |
 | rEEG\_lower\_margin        | range EEG: lower margin (5th percentile)                                      | yes |
 | rEEG\_upper\_margin        | range EEG: upper margin (95th percentile)                                     | yes |
-| rEEG\_width                | range EEG: upper margin - lower margin                                        | yes |
-| rEEG\_SD                   | range EEG: standard deviation                                                 | yes |
 | rEEG\_CV                   | range EEG: coefficient of variation                                           | yes |
 | rEEG\_asymmetry            | range EEG: measure of skew about median                                       | yes |
 | IBI\_length\_max           | burst annotation: maximum (95th percentile) inter-burst interval              | no  |
@@ -121,6 +114,12 @@ in more detail:
 | IBI\_burst\_number         | burst annotation: number of bursts                                            | no  |
 
 FB: features generated for each frequency band (FB)
+
+These are the 23 feature names of neural_eeg_features 0.6.1. Seven features of the original
+NEURAL were removed to match it: `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`,
+`rEEG_width`, `rEEG_SD`, `connectivity_coh_max` and `connectivity_coh_freqmax`; requesting one
+raises `ValueError`. `rEEG_CV` still uses the rEEG mean and standard deviation internally. See
+`docs/CHANGES_vs_neural_eeg_features_0.6.1.md` in the repository.
 
 
 ## Files

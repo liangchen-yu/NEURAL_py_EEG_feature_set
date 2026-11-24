@@ -3,7 +3,9 @@
 - First, it stops unless Python imports this repository's NEURAL (src/).
 
 - `reference`: the saved reference values (tests/data/reference_<case>.json);
-  spectral_diff from their MATLAB-fix section (neural_outputs.with_matlab_fix).
+  spectral_diff from their MATLAB-fix section (neural_outputs.with_matlab_fix);
+  without the 7 features removed to match neural_eeg_features 0.6.1
+  (neural_outputs.without_removed_features). `raw_reference`: the files as saved.
 - `run_preprocessing`: writes a synthetic EDF file to pytest's temporary
   folder and runs NEURAL's preprocessing on it, once per case (the slow part),
   shared by all tests.
@@ -40,10 +42,18 @@ check_tests_use_this_repository()
 
 
 @pytest.fixture(scope="session")
-def reference():
-    return {case: neural_outputs.with_matlab_fix(
-                json.loads((DATA / f"reference_{case}.json").read_text(encoding="utf-8")))
+def raw_reference():
+    """The reference files as saved (all 26 non-IBI features of the original)."""
+    return {case: json.loads((DATA / f"reference_{case}.json").read_text(encoding="utf-8"))
             for case in synthetic_edf.CASES}
+
+
+@pytest.fixture(scope="session")
+def reference(raw_reference):
+    """The reference as the tests use it: with the MATLAB fix, and without the
+    7 features removed to match neural_eeg_features 0.6.1."""
+    return {case: neural_outputs.without_removed_features(neural_outputs.with_matlab_fix(value))
+            for case, value in raw_reference.items()}
 
 
 @pytest.fixture(scope="session")

@@ -447,7 +447,8 @@ def connectivity_coh(
         if coh_threshold.size != 0:
             coh[p, coh[p, :] < coh_threshold] = 0  # Check this
 
-        # compute the coherence (either mean, max, or max. frequency) for each frequency band
+        # compute the mean coherence for each frequency band (the max and
+        # max-frequency features were removed to match neural_eeg_features 0.6.1)
         dum, N = coh.shape
         ibandpass = []  # to suppress warning
         for n in range(N_freq_bands):
@@ -465,11 +466,6 @@ def connectivity_coh(
 
             if feat_name == "connectivity_coh_mean":
                 featx_pairs[n, p] = np.nanmean(coh[p, ibandpass])
-            elif feat_name == "connectivity_coh_max":
-                featx_pairs[n, p] = np.max(coh[p, ibandpass])
-            elif feat_name == "connectivity_coh_freqmax":
-                imax = np.argmax(coh[p, ibandpass])
-                featx_pairs[n, p] = fp[ibandpass[imax]]
 
     featx = np.nanmedian(featx_pairs, 1)  # compare this
     return featx
@@ -699,7 +695,9 @@ def main_connectivity(x, Fs, feat_name, ch_labels, params=None):
         x          - epoch of EEG data (size 1 x N)
         Fs         - sampling frequency (in Hz)
         feat_name  - feature type, defaults to 'connectivity_BSI';
-                     see full list of 'connectivity_' features in params['FEATURE_SET_ALL']
+                     see full list of 'connectivity_' features in params['FEATURE_SET_ALL'].
+                     'connectivity_coh_max' and 'connectivity_coh_freqmax' were
+                     removed (ValueError)
         params  - parameters (as dictionary)
                      see NEURAL_parameters() for examples
 
@@ -731,6 +729,8 @@ def main_connectivity(x, Fs, feat_name, ch_labels, params=None):
         Biology, 64(2â€“3), 237â€“278.
 
     """
+    NEURAL_parameters.check_feature_names(feat_name)
+
     if params is None:
         params = NEURAL_parameters.NEURAL_parameters()
         if "connectivity" in params:
@@ -778,11 +778,7 @@ def main_connectivity(x, Fs, feat_name, ch_labels, params=None):
     if ipairs.shape[1] == 0:
         return np.full(N_freq_bands, np.nan)
     try:
-        if (
-            feat_name == "connectivity_coh_mean"
-            or feat_name == "connectivity_coh_max"
-            or feat_name == "connectivity_coh_freqmax"
-        ):
+        if feat_name == "connectivity_coh_mean":
 
             featx = eval("connectivity_coh")(
                 x,

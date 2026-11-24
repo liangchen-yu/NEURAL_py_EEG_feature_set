@@ -38,7 +38,9 @@ PARAMS = NEURAL_parameters.NEURAL_parameters()
 BANDS = [tuple(band) for band in PARAMS["FREQ_BANDS"]]  # (low, high) cut-offs in Hz
 FD_BAND = tuple(PARAMS["FD"]["freq_bands"])  # (0.5, 30)
 FS_NEW = 64  # output rate of preprocessing_EEG.main_preprocessing (its default)
-FEATURES = [f for f in PARAMS["FEATURE_SET_ALL"] if not f.startswith("IBI")]  # 26 features
+# 19 features now; results.md was made with the original 26 (7 removed to match
+# neural_eeg_features 0.6.1)
+FEATURES = [f for f in PARAMS["FEATURE_SET_ALL"] if not f.startswith("IBI")]
 GROUPS = ("spectral", "amplitude", "connectivity", "rEEG", "FD")
 
 
