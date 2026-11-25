@@ -267,6 +267,17 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     indexes column-major (`connectivity_features.m:150`), interleaving the right channels. Which of
     these is intended is an open question for the maintainer.
   - `tests/test_connectivity_crashes.py` covers these cases and the unchanged 8-channel results.
+- `generate_all_features` crashed at some non-integer sampling rates ("Length of values ... does
+  not match length of index"), e.g. at 63.93 Hz with 6137 samples (96 s). `get_max_num_epochs`,
+  which preallocates the rows of `feats_median_ch`, used the hop of a 'hamm' window, while
+  `overlap_epochs` used that of a 'rect' window; at the default 50 % overlap they differ by one
+  sample when the epoch length in samples is odd, so the row count and the epoch count could
+  disagree. Both now count epochs with the new `generate_all_features.epoch_count` (the same hop
+  and the same rule as before: `ceil((N - (L_epoch - L_hop)) / L_hop)`; `overlap_epochs` still
+  makes one epoch when that is below 1). At even epoch lengths (e.g. 64, 100, 250 and 256 Hz)
+  results are unchanged: on all stored test cases, and on short recordings at 64 and 256 Hz
+  with IBI-only, empty, single and default feature sets, every output is identical to before. `tests/test_epoch_count.py` checks the row count
+  against the epoch count at 64, 100, 250, 256, 63.93 and 127.99 Hz for many recording lengths.
 
 ### Added
 - Regression tests (`tests/`) that compare every output with reference values from the original

@@ -61,6 +61,26 @@ def size_feature(feat_name):
     return N
 
 
+def epoch_count(N, Fs, L_window, overlap=50, window_type="rect"):
+    """
+    Epoch count ceil((N - (L_epoch - L_hop)) / L_hop) for N samples, with the
+    epoch length L_epoch and hop L_hop of utils.gen_epoch_window. It is below 1
+    (0) for a recording no longer than L_epoch - L_hop; overlap_epochs then
+    makes one padded epoch. overlap_epochs and get_max_num_epochs both use it
+    (same hop, same rule), so the preallocated rows equal the epochs whenever
+    the count is at least 1.
+
+    :param N: number of samples
+    :param Fs: sampling frequency (Hz)
+    :param L_window: epoch length (seconds)
+    :param overlap: overlap (percent)
+    :param window_type: window type (sets the hop; overlap_epochs' default 'rect')
+    :return: number of epochs
+    """
+    L_hop, L_epoch, dum = utils.gen_epoch_window(overlap, L_window, window_type, Fs)
+    return int(np.ceil((N - (L_epoch - L_hop)) / L_hop))
+
+
 def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     """
         ---------------------------------------------------------------------
@@ -79,7 +99,7 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
         overlap, L_window, window_type, Fs
     )
     N = len(x)
-    N_epochs = int(np.ceil((N - (L_epoch - L_hop)) / L_hop))
+    N_epochs = epoch_count(N, Fs, L_window, overlap, window_type)
     if N_epochs < 1:
         N_epochs = 1
         print(
@@ -423,17 +443,16 @@ def get_max_num_epochs(params, N, Fs):
     Outputs:
         a:                returns the number of epochs that will be generated
 
-    NOTE: If different window sizes or overlaps are created then this function should be updated
-
+    The count comes from epoch_count, as in overlap_epochs (same hop, same
+    rule), so it equals the number of epochs; for a recording no longer than
+    L_epoch - L_hop it is 0, as before (an epoch feature then fills the one
+    padded epoch; with none, e.g. IBI only, the table stays empty). Before, it used the hop
+    of a 'hamm' window, one sample shorter than overlap_epochs' 'rect' hop
+    when the epoch length in samples is odd (non-integer sampling rates, e.g.
+    63.93 Hz): the two counts could then differ and generate_all_features
+    failed ("Length of values ... does not match length of index").
     """
-    # num_epochs = []
-    L_window = params["EPOCH_LENGTH"]
-    overlap = params["EPOCH_OVERLAP"]
-
-    L_hop, L_epoch, dum = utils.gen_epoch_window(overlap, L_window, "hamm", Fs)
-    a = np.ceil((N - (L_epoch - L_hop)) / L_hop)
-
-    return int(a)
+    return epoch_count(N, Fs, params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])
 
 
 def add_feat_data_to_array(all_data, new_data, feat_pd_names, feat_name, params):
