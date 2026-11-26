@@ -130,7 +130,11 @@ from empty bands and edges within floating-point rounding of a bin, the two sele
 same bins exactly when each later band's first bin is the previous band's last bin, usually
 because they share an edge that lies exactly on a bin). A band that a
 feature uses whose upper edge is not above its lower edge, or not below the Nyquist
-frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. See
+frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. Only complete
+epochs are used, as in neural_eeg_features 0.6.1: samples at the end that do not fill
+another epoch are not used, and a recording shorter than one epoch (with the current
+default of 64 s epochs and 50 % overlap, temporary until step 3) raises
+`ValueError` when an epoch-based feature is requested. See
 `docs/CHANGES_vs_neural_eeg_features_0.6.1.md` in the repository.
 
 

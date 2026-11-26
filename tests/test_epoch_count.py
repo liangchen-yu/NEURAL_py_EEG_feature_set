@@ -1,13 +1,16 @@
 """generate_all_features: the number of rows preallocated for feats_median_ch
 (get_max_num_epochs) equals the number of epochs (overlap_epochs). Both use
-generate_all_features.epoch_count.
+generate_all_features.epoch_count: complete epochs only (since the change to
+match neural_eeg_features 0.6.1; tests/test_complete_epochs.py checks the
+rule), and none for a recording shorter than one epoch.
 
 Before, get_max_num_epochs used the hop of a 'hamm' window, overlap_epochs
-that of a 'rect' window. They differ by one sample when the epoch length in
-samples is odd, i.e. at non-integer sampling rates (63.93 Hz: 4091 samples,
-hops 2045 and 2046); the counts then differed for some recording lengths and
-generate_all_features failed. At even epoch lengths (64, 100, 250, 256 Hz)
-nothing changes.
+that of a 'rect' window. At the default 50 % overlap they differ by one sample
+when the epoch length in samples, floor(EPOCH_LENGTH * Fs), is odd (e.g. at
+63.93 Hz: 4091 samples, hops 2045 and 2046; whether it is odd depends on that
+product, not on Fs being an integer); the counts then differed for some
+recording lengths and generate_all_features failed. At even epoch lengths
+(64, 100, 250, 256 Hz) nothing changes.
 
 Synthetic data only.
 """
@@ -41,33 +44,36 @@ def lengths(Fs):
 
 def epochs(N, Fs):
     params = NEURAL_parameters.NEURAL_parameters()
-    with contextlib.redirect_stdout(io.StringIO()):  # the short-recording warning
-        return generate_all_features.overlap_epochs(np.zeros(N), Fs, params["EPOCH_LENGTH"],
-                                                    params["EPOCH_OVERLAP"]).shape[0]
+    return generate_all_features.overlap_epochs(np.zeros(N), Fs, params["EPOCH_LENGTH"],
+                                                params["EPOCH_OVERLAP"]).shape[0]
 
 
 @pytest.mark.parametrize("Fs", RATES)
 def test_preallocated_rows_equal_epochs(Fs):
-    """Equal whenever the count is at least 1. A recording no longer than
-    L_epoch - L_hop gets 0 preallocated rows (as before) and one padded
-    epoch, whose row an epoch feature adds (test_short_recording_shapes)."""
+    """Equal for every length with at least one epoch, at even and odd epoch
+    lengths. Shorter than one epoch: 0 rows, and overlap_epochs raises."""
     params = NEURAL_parameters.NEURAL_parameters()
     hop, L_epoch, dum = utils.gen_epoch_window(params["EPOCH_OVERLAP"], params["EPOCH_LENGTH"], "rect", Fs)
     for N in lengths(Fs):
         rows = generate_all_features.get_max_num_epochs(params, N, Fs)
-        if N <= L_epoch - hop:
-            assert rows == 0 and epochs(N, Fs) == 1, (Fs, N)
+        if N < L_epoch:
+            assert rows == 0, (Fs, N)
+            with pytest.raises(ValueError, match="shorter than one analysis epoch"):
+                epochs(N, Fs)
         else:
-            assert rows == epochs(N, Fs), (Fs, N)
+            assert rows == epochs(N, Fs) >= 1, (Fs, N)
 
 
-# feats_median_ch shapes of the code before this change (commit 48b77fd) for
-# 2 synthetic channels: (rows, columns) per feature set, for recordings of
-# 100 samples, 20 s, 32 s (= L_epoch - L_hop) and 32 s + 1 sample.
+# feats_median_ch shapes for 2 synthetic channels, (rows, columns) per
+# feature set, for recordings of 100 samples, 20 s, 32 s and 32 s + 1 sample
+# (all shorter than one 64 s epoch). Without epoch features (IBI only, or no
+# feature) the table has no row; epoch features raise ValueError. (Before the
+# complete-epochs change, 32 s + 1 sample gave one padded epoch: shapes
+# (1, 1) and (1, 0), and spectral_power (1, 4) at every length.)
 SHORT_SHAPES = {
-    "IBI only": [(0, 1), (0, 1), (0, 1), (1, 1)],
-    "empty": [(0, 0), (0, 0), (0, 0), (1, 0)],
-    "spectral_power": [(1, 4), (1, 4), (1, 4), (1, 4)],
+    "IBI only": [(0, 1), (0, 1), (0, 1), (0, 1)],
+    "empty": [(0, 0), (0, 0), (0, 0), (0, 0)],
+    "spectral_power": [ValueError] * 4,
 }
 FEATURE_SETS = {"IBI only": ["IBI_burst_number"], "empty": [], "spectral_power": ["spectral_power"]}
 
@@ -75,9 +81,6 @@ FEATURE_SETS = {"IBI only": ["IBI_burst_number"], "empty": [], "spectral_power":
 @pytest.mark.parametrize("Fs", [64, 256])
 @pytest.mark.parametrize("name", sorted(SHORT_SHAPES))
 def test_short_recording_shapes(Fs, name):
-    """Short recordings keep the shapes of before: no row is added when no
-    epoch feature runs (IBI only, or no feature); an epoch feature fills
-    the one padded epoch."""
     sizes = [100, 20 * Fs, 32 * Fs, 32 * Fs + 1]
     for N, expected in zip(sizes, SHORT_SHAPES[name]):
         rng = np.random.default_rng(1)
@@ -85,6 +88,10 @@ def test_short_recording_shapes(Fs, name):
         data = {"eeg_data": pd.DataFrame(rng.normal(size=(N, 2)), columns=labels), "Fs": Fs, "ch_labels": labels}
         with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
             warnings.simplefilter("ignore")
+            if expected is ValueError:
+                with pytest.raises(ValueError, match="shorter than one analysis epoch"):
+                    generate_all_features.generate_all_features(data, feat_set=FEATURE_SETS[name])
+                continue
             median_ch = generate_all_features.generate_all_features(data, feat_set=FEATURE_SETS[name])[3]
         assert median_ch.shape == expected, (Fs, N, name)
 

@@ -66,6 +66,11 @@ def load_edf_EEG_file(file_name, channels_to_look=None):
     return data_out, ch_fs
 
 
+# Unused copy of generate_all_features.overlap_epochs: nothing in the package
+# calls it. It keeps the old rule, ceil((N - (L_epoch - L_hop)) / L_hop)
+# epochs with a NaN-padded final epoch, whereas generate_all_features now uses
+# complete epochs only (neural_eeg_features 0.6.1). Left unchanged: the tests
+# fingerprint its output (tests/data/reference_input_types.json).
 def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     """
         ---------------------------------------------------------------------

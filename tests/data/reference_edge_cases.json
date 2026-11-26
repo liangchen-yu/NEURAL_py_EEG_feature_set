@@ -7,9 +7,10 @@
     "edf_export": "utils.save_pd_as_edf: what the written files contain, and the caller's DataFrame afterwards (the original also set its NaN to 0). pyedflib 0.1.41+ refuses the original's header key 'sample_rate', so while making this reference the key was renamed to 'sample_frequency' (same meaning) on its way into pyedflib.",
     "fingerprint": "Per column: NaN stretches as [first, last + 1], number of +inf and -inf, sum and sum of squares of the finite values, min, max, and every 997th sample.",
     "null": "null means NaN (not a number).",
-    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values.",
-    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values.",
-    "with_neural_eeg_features_0.6.1_band_bins": "spectral_power and spectral_relative_power values from the original NEURAL with only its band-bin selection (spectral_power, and the total band in gen_spectrum) replaced by the rule of neural_eeg_features 0.6.1: each band uses the FFT bins ceil(low * N / Fs) to floor(high * N / Fs), inclusive, independently of the other bands (two floating-point steps allowed at each edge; at most the Nyquist bin). The original started each later band at the previous band's last bin. At the same places as in the rest of this file. This repository uses that rule, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every other feature is compared with the original's values."
+    "with_matlab_fix_a279ddd": "spectral_diff values from the original NEURAL with only the one-line fix of MATLAB commit a279ddd (2020-04-23) applied (in spectral_diff, np.zeros(N_epochs) becomes np.zeros(N_epochs - 1)), at the same places as in the rest of this file. This repository includes that fix, so the tests compare its spectral_diff with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power), with_neural_eeg_features_0.6.1_complete_epochs (all 19 non-IBI features of this repository, made with the three fixes before it as well, so it replaces them for these features); every other output is compared with the original's values.",
+    "with_neural_eeg_features_0.6.1_moments": "amplitude_skew and amplitude_kurtosis values from the original NEURAL with only these two functions replaced by the definitions of neural_eeg_features 0.6.1: absolute bias-corrected skewness, abs(scipy.stats.skew(x, bias=False)), and bias-corrected Pearson kurtosis, scipy.stats.kurtosis(x, fisher=False, bias=False), on the finite values; NaN for fewer than 3 (skewness) or 4 (kurtosis) values or for constant values. At the same places as in the rest of this file. This repository uses these definitions, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power), with_neural_eeg_features_0.6.1_complete_epochs (all 19 non-IBI features of this repository, made with the three fixes before it as well, so it replaces them for these features); every other output is compared with the original's values.",
+    "with_neural_eeg_features_0.6.1_band_bins": "spectral_power and spectral_relative_power values from the original NEURAL with only its band-bin selection (spectral_power, and the total band in gen_spectrum) replaced by the rule of neural_eeg_features 0.6.1: each band uses the FFT bins ceil(low * N / Fs) to floor(high * N / Fs), inclusive, independently of the other bands (two floating-point steps allowed at each edge; at most the Nyquist bin). The original started each later band at the previous band's last bin. At the same places as in the rest of this file. This repository uses that rule, so the tests compare the two features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power), with_neural_eeg_features_0.6.1_complete_epochs (all 19 non-IBI features of this repository, made with the three fixes before it as well, so it replaces them for these features); every other output is compared with the original's values.",
+    "with_neural_eeg_features_0.6.1_complete_epochs": "Values of the 19 non-IBI features of this repository from the original NEURAL with its epoch count replaced by the rule of neural_eeg_features 0.6.1: complete epochs only, (N - L_epoch) // L_hop + 1 of them, without the original's NaN-padded final epoch (in overlap_epochs and get_max_num_epochs), and with the three fixes above applied as well (MATLAB a279ddd, the 0.6.1 moments and band bins). At the same places as in the rest of this file. This repository uses all of these, so the tests compare the 19 features with these values. The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd (spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power), with_neural_eeg_features_0.6.1_complete_epochs (all 19 non-IBI features of this repository, made with the three fixes before it as well, so it replaces them for these features); every other output is compared with the original's values."
   },
   "made_with": {
     "python": "3.14.7",
@@ -754,6 +755,54 @@
       "features": {
         "spectral_power": [149.42445517003526,53.676357760001814,40.8743732599697,68.18608312695282],
         "spectral_relative_power": [0.46384723518801896,0.1639102880661628,0.13138092386414682,0.2224860602896423]
+      }
+    }
+  },
+  "with_neural_eeg_features_0.6.1_complete_epochs": {
+    "nan_input": {
+      "features": {
+        "spectral_power": [124.94017725717376,48.24613245657503,34.884102812901475,57.84630407245818],
+        "spectral_relative_power": [0.4696299069429242,0.1679724341720067,0.1278439525148842,0.2177305464308003],
+        "spectral_flatness": [0.7845178382237801,0.9775139982633784,0.9249217380579584,0.9443495520287917],
+        "spectral_diff": [0.010399407425094606,0.02171845350963548,0.012442807470459647,0.01357402576585224],
+        "spectral_entropy": [0.8978975494176413,0.988926914752731,0.9718501687598291,0.9862365346520858],
+        "spectral_edge_frequency": [24.375],
+        "FD": [1.773921948826271],
+        "amplitude_skew": [0.05084156093662838,0.003984015472687574,0.003735232057729258,0.03299918358224331],
+        "amplitude_kurtosis": [3.373153723089709,3.1354535545879525,3.3562846258111056,3.301799599481717],
+        "amplitude_env_mean": [231.26790767569992,64.34921116483038,54.143109294585344,108.32841431867273],
+        "amplitude_env_SD": [252.62744857914322,66.04023783354589,60.96581171085522,121.03529461567913],
+        "connectivity_BSI": [0.11846553359122569,0.1349992577960627,0.11389772499097713,0.1209025940169672],
+        "connectivity_corr": [0.46285780425547113,0.38146522022959484,0.4749471229715516,0.40780884418976493],
+        "connectivity_coh_mean": [0.36908584631992886,0.3152235982146523,0.3642465668587661,0.3229301603576858],
+        "rEEG_median": [39.45310868025099,24.920353823029558,25.147032605067736,36.008868211928686],
+        "rEEG_lower_margin": [23.542265260108394,15.905528490623315,15.573166359520226,26.9102480711977],
+        "rEEG_upper_margin": [62.47913082572724,36.74998082421976,38.43176185880334,53.22007034664601],
+        "rEEG_CV": [0.2938534690981498,0.2513526146314822,0.26572704023203125,0.20542674315862697],
+        "rEEG_asymmetry": [0.17716725347090068,0.12415029428893347,0.19140171575505138,0.183070050344533]
+      }
+    },
+    "inf_line": {
+      "features": {
+        "spectral_power": [128.66591629896658,48.570586474852476,36.680079082275064,58.937785594266856],
+        "spectral_relative_power": [0.47216556053510345,0.16648465140825142,0.12732434349403568,0.2150101677400686],
+        "spectral_flatness": [0.7808558236099061,0.9781934443548945,0.9157612874873633,0.9429487422790964],
+        "spectral_diff": [0.010388238962460994,0.02079831271954817,0.011426216744710784,0.013566613225351652],
+        "spectral_entropy": [0.8949170593651339,0.9895014679354173,0.9688543918174435,0.9858469628746425],
+        "spectral_edge_frequency": [24.25],
+        "FD": [1.7726981559058044],
+        "amplitude_skew": [0.0640972785605028,0.0046511412517922495,0.0031780867072372966,0.0333002534957136],
+        "amplitude_kurtosis": [3.349819589389369,3.0542113073438957,3.339195389198517,3.3516540170465317],
+        "amplitude_env_mean": [237.17776662939707,65.97953489247628,57.244487725460935,110.32067196314566],
+        "amplitude_env_SD": [259.7175954543859,64.35283687837675,64.22668853936949,124.36450210409842],
+        "connectivity_BSI": [0.11601074238015183,0.14370210229488223,0.11210854859912635,0.13318903417918865],
+        "connectivity_corr": [0.44748736964249153,0.37958436934598655,0.5575404341186638,0.42957177247139744],
+        "connectivity_coh_mean": [0.3756018756476218,0.3048268901407861,0.3609553751915173,0.28132559728277373],
+        "rEEG_median": [41.20082748720347,25.04134860049641,25.372949418676672,36.11005452650241],
+        "rEEG_lower_margin": [24.99664393755411,16.03144080097768,15.844558779434474,26.893532884645833],
+        "rEEG_upper_margin": [64.33810648465288,36.7069885918508,39.09509798332299,54.21868801152075],
+        "rEEG_CV": [0.29493239554082484,0.24971724097736325,0.2563843629140444,0.20414631984376905],
+        "rEEG_asymmetry": [0.20781814122506603,0.09012790413278622,0.1989921848175507,0.23124314635035564]
       }
     }
   }

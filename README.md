@@ -144,7 +144,11 @@ from empty bands and edges within floating-point rounding of a bin, the two sele
 same bins exactly when each later band's first bin is the previous band's last bin, usually
 because they share an edge that lies exactly on a bin). A band that a
 feature uses whose upper edge is not above its lower edge, or not below the Nyquist
-frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. See
+frequency, raises `ValueError`; a band that contains no FFT bin gives NaN. Only complete
+epochs are used, as in neural_eeg_features 0.6.1: samples at the end that do not fill
+another epoch are not used, and a recording shorter than one epoch (with the current
+default of 64 s epochs and 50 % overlap, temporary until step 3) raises
+`ValueError` when an epoch-based feature is requested. See
 [docs/CHANGES_vs_neural_eeg_features_0.6.1.md](docs/CHANGES_vs_neural_eeg_features_0.6.1.md).
 
 The NEURAL paper specifies Pearson correlation for `connectivity_corr` ([arXiv:1704.05694](https://arxiv.org/abs/1704.05694), Table B.3).
@@ -297,7 +301,13 @@ No default parameter was changed. Results differ from the original only:
   per value, lower than before), and the tests compare these two with the original plus only
   the new bin rule. A band that a feature uses with the upper edge not above the lower edge
   or not below Nyquist now raises `ValueError`, and a band with no FFT bin gives NaN, as in
-  neural_eeg_features 0.6.1;
+  neural_eeg_features 0.6.1. Finally, only complete epochs are used: a recording that does not
+  end on an epoch boundary no longer gets a final NaN-padded epoch (in the 300 s test
+  recordings 8 instead of 9 epochs), and a recording shorter than one epoch (64 s with the
+  current default of 64 s / 50 % epochs, temporary until step 3) raises
+  `ValueError` for epoch-based features. In the 300 s test recordings the summaries of 18 of
+  19 features change, by up to 42.9 %, because they have only 9 epochs; with the same
+  generator the largest change is 3.9 % at 30 min and 2.1 % at 60 min;
 - at the rates changed by the downsampling fix, and for recordings that are not a whole number
   of seconds at non-integer rate ratios (e.g. 200 or 250 Hz; now resampled by the ratio of the
   two rates, as in MATLAB, exact for whole-number rates);
@@ -328,8 +338,11 @@ run with the same library versions on the same computer:
   with the original plus the MATLAB a279ddd fix, `amplitude_skew` and
   `amplitude_kurtosis` with the original plus the neural_eeg_features 0.6.1
   definitions, `spectral_power` and `spectral_relative_power` with the
-  original plus the neural_eeg_features 0.6.1 band-bin rule (see above),
-  every other value with the original itself;
+  original plus the neural_eeg_features 0.6.1 band-bin rule (see above).
+  Since the complete-epochs change, all 19 features are compared with the
+  original plus all of these changes and complete epochs only; the artefact
+  report, the removed channels and the preprocessed EEG with the original
+  itself;
 - data that already contain NaN when given to `remove_artefacts`: the
   artefact report, every feature's summary values (one per frequency band;
   per-channel and per-epoch values are not stored for this case), sampled
@@ -488,8 +501,11 @@ reference values for each group.
   amplitude features); `spectral_power` and `spectral_relative_power` with
   values the same run makes with the original plus only the band-bin rule of
   neural_eeg_features 0.6.1 (not in the window reference, which has no
-  `spectral_power`). The tests apply these three sets of values in that
-  order; each file's "about" text states it.
+  `spectral_power`); all 19 features with values the same run makes with
+  the original plus all of these and complete epochs only (not in the window
+  reference, which computes its features on one 64 s array, without
+  epochs). The tests apply these four sets of values in that order, a later
+  one replacing an earlier one; each file's "about" text states it.
 - Comparison: the tests check every stored value, allowing a relative
   difference of 1e-9 (absolute 1e-12) so that they can also run with other
   library versions; NaN must be NaN in both, and counts, positions and text

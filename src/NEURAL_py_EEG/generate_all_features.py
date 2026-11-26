@@ -61,14 +61,18 @@ def size_feature(feat_name):
     return N
 
 
+# The feature groups computed per epoch (IBI uses the whole recording).
+EPOCH_GROUPS = ("spectral", "amplitude", "rEEG", "FD", "connectivity")
+
+
 def epoch_count(N, Fs, L_window, overlap=50, window_type="rect"):
     """
-    Epoch count ceil((N - (L_epoch - L_hop)) / L_hop) for N samples, with the
-    epoch length L_epoch and hop L_hop of utils.gen_epoch_window. It is below 1
-    (0) for a recording no longer than L_epoch - L_hop; overlap_epochs then
-    makes one padded epoch. overlap_epochs and get_max_num_epochs both use it
-    (same hop, same rule), so the preallocated rows equal the epochs whenever
-    the count is at least 1.
+    Number of complete epochs in N samples: (N - L_epoch) // L_hop + 1, or 0
+    if N < L_epoch, with the epoch length L_epoch and hop L_hop of
+    utils.gen_epoch_window. As in neural_eeg_features 0.6.1, trailing data
+    shorter than an epoch do not make another (NaN-padded) epoch.
+    overlap_epochs and get_max_num_epochs both use it (same hop, same rule),
+    so the preallocated rows always equal the epochs.
 
     :param N: number of samples
     :param Fs: sampling frequency (Hz)
@@ -78,7 +82,18 @@ def epoch_count(N, Fs, L_window, overlap=50, window_type="rect"):
     :return: number of epochs
     """
     L_hop, L_epoch, dum = utils.gen_epoch_window(overlap, L_window, window_type, Fs)
-    return int(np.ceil((N - (L_epoch - L_hop)) / L_hop))
+    if N < L_epoch:
+        return 0
+    return int((N - L_epoch) // L_hop) + 1
+
+
+def shorter_than_one_epoch(N, Fs, L_window, overlap=50, window_type="rect"):
+    """The ValueError for a recording of N samples shorter than one epoch."""
+    L_hop, L_epoch, dum = utils.gen_epoch_window(overlap, L_window, window_type, Fs)
+    return ValueError(
+        "Recording is shorter than one analysis epoch: %d samples (%g s at %g Hz); "
+        "an epoch is %d samples (EPOCH_LENGTH = %g s)" % (N, N / Fs, Fs, L_epoch, L_window)
+    )
 
 
 def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
@@ -86,6 +101,11 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
         ---------------------------------------------------------------------
         overlapping epochs in one matrix
         ---------------------------------------------------------------------
+    Complete epochs only (epoch_count), as in neural_eeg_features 0.6.1:
+    epoch k holds samples k * L_hop to k * L_hop + L_epoch - 1; trailing
+    samples that do not fill another epoch are not used. Before, a final
+    epoch was padded with NaN. A recording shorter than one epoch raises
+    ValueError (shorter_than_one_epoch).
 
     :param x:
     :param Fs:
@@ -101,29 +121,17 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     N = len(x)
     N_epochs = epoch_count(N, Fs, L_window, overlap, window_type)
     if N_epochs < 1:
-        N_epochs = 1
-        print(
-            "| WARNING: signal length is less than segment length (L_epoch - L_hop).\n"
-        )
-        print('| Adjust "EPOCH_LENGTH" or "EPOCH_OVERLAP" in ')
-        print('"utils.py" file.\n')
+        raise shorter_than_one_epoch(N, Fs, L_window, overlap, window_type)
 
     nw = np.array(list(range(L_epoch)))
-    ix = np.array(list(range(N)))
 
     x_epochs = np.empty([N_epochs, L_epoch])
-    x_epochs.fill(np.nan)
 
     # Preserve pandas < 3 position/label indexing for x[nf].
     x = utils.index_like_pandas2(x)
     for k in range(N_epochs):
         nf = nw + k * L_hop
-        # zero-pad if outside x
-        if np.max(nf) > ix[-1]:
-            nf = np.delete(nf, np.where(nf > ix[-1])[0])
-        i_nf = np.array(list(range(len(nf))))
-
-        x_epochs[k, i_nf] = x[nf] * win_epoch[i_nf]
+        x_epochs[k, :] = x[nf] * win_epoch
 
     return x_epochs
 
@@ -211,6 +219,14 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
     if feat_set is None:
         feat_set = params["FEATURE_SET_ALL"]
     NEURAL_parameters.check_feature_names(feat_set)
+
+    # Epoch-based features need at least one complete epoch (as
+    # neural_eeg_features 0.6.1): raise before computing anything. IBI-only
+    # requests (and an empty feature list) still work on shorter recordings.
+    if any(f.split("_")[0] in EPOCH_GROUPS for f in feat_set) and epoch_count(
+        len(eeg_data), Fs, params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"]
+    ) < 1:
+        raise shorter_than_one_epoch(len(eeg_data), Fs, params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])
 
     N_feats = len(feat_set)
 
@@ -444,13 +460,13 @@ def get_max_num_epochs(params, N, Fs):
         a:                returns the number of epochs that will be generated
 
     The count comes from epoch_count, as in overlap_epochs (same hop, same
-    rule), so it equals the number of epochs; for a recording no longer than
-    L_epoch - L_hop it is 0, as before (an epoch feature then fills the one
-    padded epoch; with none, e.g. IBI only, the table stays empty). Before, it used the hop
-    of a 'hamm' window, one sample shorter than overlap_epochs' 'rect' hop
-    when the epoch length in samples is odd (non-integer sampling rates, e.g.
-    63.93 Hz): the two counts could then differ and generate_all_features
-    failed ("Length of values ... does not match length of index").
+    rule: complete epochs only), so it always equals the number of epochs; it
+    is 0 for a recording shorter than one epoch, where epoch-based features
+    raise ValueError and an IBI-only request leaves the table empty. (Before
+    commit 90543fc it used the hop of a 'hamm' window, one sample shorter
+    than overlap_epochs' 'rect' hop at 50 % overlap when the epoch length in
+    samples is odd: the two counts could then differ and
+    generate_all_features failed.)
     """
     return epoch_count(N, Fs, params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])
 

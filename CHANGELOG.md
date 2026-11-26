@@ -14,9 +14,10 @@ before), for band-pass and high-pass filters
 built by `utils.filter_zerophase` (not used by the default pipeline), and for two connectivity
 edge cases (see the `connectivity_features` entry); the tests in `tests/` check this. To match
 neural_eeg_features 0.6.1, seven features were removed, `amplitude_skew` and
-`amplitude_kurtosis` are now bias-corrected, and frequency bands select their FFT bins
-independently (see "Changes to match neural_eeg_features 0.6.1"); the other features are
-unchanged.
+`amplitude_kurtosis` are now bias-corrected, frequency bands select their FFT bins
+independently, and only complete epochs are used, which changes the epoch-based features of
+recordings that do not end on an epoch boundary (see "Changes to match neural_eeg_features
+0.6.1").
 
 ### Changes to match neural_eeg_features 0.6.1
 The reference package neural_eeg_features 0.6.1 revises the NEURAL feature set. Its changes are
@@ -137,6 +138,43 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     bin-based features give the same values under both rules, so they are compared with the
     original (checked by `tests/test_band_bins.py`). Their "about" texts now also state the order of the fix
     sections. `reference_windows.json` is unchanged. New: `tests/test_band_bins.py`.
+- **Complete epochs only** (as in the reference package): `generate_all_features` uses
+  `(N - L_epoch) // L_hop + 1` epochs (`generate_all_features.epoch_count`, also used by
+  `get_max_num_epochs`, so the preallocated rows of `feats_median_ch` always equal the epochs).
+  Before, it also made a final epoch padded with NaN whenever the recording did not end on an
+  epoch boundary (`ceil((N - (L_epoch - L_hop)) / L_hop)` epochs; at 50 % overlap the padding
+  alone stayed below the 50 % NaN threshold, so that epoch was kept unless NaN already in the
+  signal pushed it over the threshold). The hop, the 50 % NaN rule,
+  the windows within an epoch and the unused copy `preprocessing_EEG.overlap_epochs` are
+  unchanged.
+  - A recording shorter than one epoch (64 s with the current settings) raises `ValueError`
+    naming both lengths when an epoch-based feature (spectral, amplitude, FD, rEEG,
+    connectivity) is requested, before any feature is computed, e.g. `Recording is shorter
+    than one analysis epoch: 4032 samples (63 s at 64 Hz); an epoch is 4096 samples
+    (EPOCH_LENGTH = 64 s)`. IBI-only requests and an empty feature list still return
+    (`feats_median_ch` with 0 rows). Before: values from one padded epoch if more than half of
+    it was data, otherwise NaN. The 64 s minimum is temporary: step 3 adopts the reference
+    package's default settings (16 s epochs with 75 % overlap).
+  - In the test data the complete epochs are bit-identical and only the padded final epoch is
+    dropped (300 s recordings: 9 to 8 epochs; 120 s edge-case inputs: 3 to 2). The summaries of
+    18 of the 19 non-IBI features change (`spectral_edge_frequency` did not change there): up
+    to 15.7 % (clean recording, `amplitude_skew`) and 42.9 % (artefacts, `rEEG_asymmetry`);
+    the median over features of each feature's largest change is 4.2 % and 4.4 %. These sizes
+    are large because the 300 s recordings have only 9 epochs. With the same synthetic
+    generator, at 30 min (56 to 55 epochs) the largest change is 3.9 % (clean) and 3.7 %
+    (artefacts), median 0.42 % and 0.37 %; at 60 min (112 to 111 epochs) 1.4 % and 2.1 %,
+    median 0.23 % and 0.24 %.
+  - Checked against the reference package on identical preprocessed arrays (the clean 300 s
+    test recording) with NEURAL_py-like settings (64 s / 50 % epochs, 2 s Hamming windows with
+    50 % overlap, `n_fft` 128, default bands): `spectral_diff` now agrees to 4.7e-16 relative
+    per band, 1.1e-15 per channel and 2.2e-15 per channel and epoch (256 values); before, the
+    summary differed by -8.4 % to +10.1 % per band.
+  - Reference files: section `with_neural_eeg_features_0.6.1_complete_epochs` (all 19 non-IBI
+    features, from the original NEURAL with all the fixes above and its epoch count replaced
+    in memory) in the clean, artefacts, edge cases and input types references, applied last.
+    `neural_outputs.with_fixes` now takes all sections out before applying them and limits
+    this one to the `generate_all_features` outputs; `reference_windows.json` (no epochs) is
+    unchanged. New: `tests/test_complete_epochs.py`.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit

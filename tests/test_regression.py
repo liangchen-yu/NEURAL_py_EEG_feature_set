@@ -72,15 +72,63 @@ def test_moments_section_holds_the_bias_corrected_values(raw_reference):
 
 def epochs_with_nan(data):
     """For the channels generate_all_features keeps (not all NaN), whether
-    each of its epochs contains NaN: [channel][epoch], as feats_per_epochs."""
+    each epoch of the ORIGINAL's epoch grid contains NaN: [channel][epoch], as
+    the original's feats_per_epochs. The original's grid (with its NaN-padded
+    final epoch) is that of preprocessing_EEG.overlap_epochs, the unchanged
+    copy; generate_all_features now uses complete epochs only."""
     import numpy as np
-    from NEURAL_py_EEG import NEURAL_parameters, generate_all_features
+    from NEURAL_py_EEG import NEURAL_parameters, preprocessing_EEG
 
     params = NEURAL_parameters.NEURAL_parameters()
     eeg = data["eeg_data"]
     kept = [c for c in data["ch_labels"] if not np.all(np.isnan(eeg[c]))]
-    return np.array([[np.isnan(epoch).any() for epoch in generate_all_features.overlap_epochs(
-        eeg[c], data["Fs"], params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])] for c in kept])
+    return np.array([[np.isnan(epoch).any() for epoch in preprocessing_EEG.overlap_epochs(
+        eeg[c], data["Fs"], params["EPOCH_LENGTH"], params["EPOCH_OVERLAP"])[0]] for c in kept])
+
+
+def earlier_fixes(raw, feature):
+    """A main reference's values for one feature with the fixes before the
+    complete-epochs section applied: its own section if it has one, else the
+    original's."""
+    for section, features, keys in neural_outputs.FIXES[:-1]:
+        if feature in features:
+            return raw[section]["features"][feature]
+    return raw["features"][feature]
+
+
+@pytest.mark.parametrize("case", CASES)
+def test_complete_epochs_section_drops_only_the_padded_epoch(case, raw_reference):
+    """The complete-epochs section (made by the original with all fixes and
+    complete epochs only) must hold, for every feature, exactly the values
+    of the earlier references on the complete epochs: the per-epoch values
+    of the first n epochs unchanged, the original's final NaN-padded epoch
+    (n + 1) dropped. Its summaries must be the medians of those epochs."""
+    import numpy as np
+    from NEURAL_py_EEG import generate_all_features
+
+    raw = raw_reference[case]
+    section = raw[neural_outputs.COMPLETE_EPOCHS_SECTION]["features"]
+    assert sorted(section) == sorted(neural_outputs.COMPLETE_EPOCHS_FEATURES)
+    samples, fs = raw["preprocessed"]["n_samples"], raw["preprocessed"]["Fs"]
+    n = generate_all_features.epoch_count(samples, fs, 64, 50)
+    assert n == 8  # 300 s at 64 Hz: complete epochs start every 32 s, the 9th would be padded
+    for feature in neural_outputs.COMPLETE_EPOCHS_FEATURES:
+        new, old = section[feature], earlier_fixes(raw, feature)
+        assert new["columns"] == old["columns"]
+        median_ch = neural_outputs.to_array(new["feats_median_ch"])
+        old_median_ch = neural_outputs.to_array(old["feats_median_ch"])
+        assert median_ch.shape[0] == n and old_median_ch.shape[0] == n + 1, feature
+        assert np.array_equal(median_ch, old_median_ch[:n], equal_nan=True), feature
+        if neural_outputs.feature_group(feature) == "connectivity":
+            per_epoch = median_ch  # the per-epoch values of a connectivity feature
+            expected = np.nanmedian(per_epoch, axis=0)
+        else:
+            per_epoch = neural_outputs.to_array(new["feats_per_epochs"])  # [channel][epoch][band]
+            old_per_epoch = neural_outputs.to_array(old["feats_per_epochs"])
+            assert per_epoch.shape[1] == n and old_per_epoch.shape[1] == n + 1, feature
+            assert np.array_equal(per_epoch, old_per_epoch[:, :n, :], equal_nan=True), feature
+            expected = np.nanmedian(np.nanmedian(per_epoch, axis=1), axis=0)
+        assert np.array_equal(neural_outputs.to_array(new["feat_st"]), expected, equal_nan=True), feature
 
 
 def test_band_bins_section_differs_only_in_epochs_with_nan(raw_reference, run_preprocessing):

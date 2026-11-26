@@ -319,11 +319,29 @@ MOMENTS_SECTION = "with_neural_eeg_features_0.6.1_moments"
 BAND_BINS_FEATURES = ("spectral_power", "spectral_relative_power")
 BAND_BINS_SECTION = "with_neural_eeg_features_0.6.1_band_bins"
 
-# (section, features it holds), in the order with_fixes applies them.
+# All 19 non-IBI features of this repository: complete epochs only, as in
+# neural_eeg_features 0.6.1 (no NaN-padded final epoch); tests/
+# test_complete_epochs.py checks the rule. This section is made with all the
+# fixes above applied too, so for these features it replaces their sections.
+# It covers only generate_all_features outputs (COMPLETE_EPOCHS_KEYS): the
+# windows file computes its features on one 64 s array, without epochs.
+COMPLETE_EPOCHS_FEATURES = (
+    "spectral_power", "spectral_relative_power", "spectral_flatness", "spectral_diff",
+    "spectral_entropy", "spectral_edge_frequency", "FD", "amplitude_skew", "amplitude_kurtosis",
+    "amplitude_env_mean", "amplitude_env_SD", "connectivity_BSI", "connectivity_corr",
+    "connectivity_coh_mean", "rEEG_median", "rEEG_lower_margin", "rEEG_upper_margin", "rEEG_CV",
+    "rEEG_asymmetry",
+)
+COMPLETE_EPOCHS_SECTION = "with_neural_eeg_features_0.6.1_complete_epochs"
+COMPLETE_EPOCHS_KEYS = ("features", "nan_input", "inf_line", "index_types")
+
+# (section, features it holds, top-level keys of the reference it covers or
+# None for all), in the order with_fixes applies them.
 FIXES = (
-    (FIX_SECTION, (FIXED_FEATURE,)),
-    (MOMENTS_SECTION, MOMENTS_FEATURES),
-    (BAND_BINS_SECTION, BAND_BINS_FEATURES),
+    (FIX_SECTION, (FIXED_FEATURE,), None),
+    (MOMENTS_SECTION, MOMENTS_FEATURES, None),
+    (BAND_BINS_SECTION, BAND_BINS_FEATURES, None),
+    (COMPLETE_EPOCHS_SECTION, COMPLETE_EPOCHS_FEATURES, COMPLETE_EPOCHS_KEYS),
 )
 
 
@@ -372,13 +390,18 @@ def check_fix_not_lower(new, old, where):
 
 def with_fixes(reference):
     """The reference as the tests use it: each fixed feature's values from its
-    fix section (FIXES), all other values the original's. A file without a fix
-    section must also have none of its features (reference_windows.json has no
-    amplitude features, so it has no moments section)."""
+    fix section (FIXES, applied in order, so a later section replaces an
+    earlier one at the same place), all other values the original's. A file
+    without a fix section must also have none of its features within the
+    section's top-level keys (reference_windows.json has no amplitude
+    features, so it has no moments section; it has no generate_all_features
+    outputs, so it has no complete-epochs section)."""
     reference = copy.deepcopy(reference)
-    for section, features in FIXES:
-        fixed = reference.pop(section, None)
-        places = sorted(feature_places(reference, features))
+    # Take all sections out first, so that no section counts as reference places.
+    sections = [(section, features, keys, reference.pop(section, None)) for section, features, keys in FIXES]
+    for section, features, keys, fixed in sections:
+        scope = reference if keys is None else dict((key, reference[key]) for key in keys if key in reference)
+        places = sorted(feature_places(scope, features))
         if fixed is None:
             assert not places, "no %s section, but the reference has %s" % (section, ", ".join(features))
             continue

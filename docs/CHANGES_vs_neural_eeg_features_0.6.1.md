@@ -10,6 +10,7 @@ the reference package's `docs/definitions.md`.
 | 1 | Remove 7 features: `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`, `rEEG_width`, `rEEG_SD`, `connectivity_coh_max`, `connectivity_coh_freqmax` | `FEATURE_SET_ALL` has 30 names (26 non-IBI); with the default bands, 102 feature columns; a default call's `feats_median_ch` has 98 columns (the non-IBI ones) | `FEATURE_SET_ALL` has the reference package's 23 names in the same order (19 non-IBI); 74 columns. `feats_median_ch` still keeps the first 98 columns (`[:98]` unchanged): the same explicit feature list gives the same columns; a default call gives 74 (28 removed-feature columns gone, the 4 always-NaN IBI columns now included). Requesting a removed name raises `ValueError` naming it, in `generate_all_features`, `main_amplitude`, `main_rEEG` and `main_connectivity`. Public functions `amplitude_total_power`, `amplitude_SD`, `rEEG_mean`, `rEEG_width`, `rEEG_SD` deleted; coherence max and max-frequency branches removed | "Version changes and validation limits" (0.2 removes the two coherence features, 0.3 the two amplitude features, 0.4 `rEEG_mean`, 0.5 `rEEG_width` and `rEEG_SD`; requesting a removed name raises `ValueError`); "Deliberate settings and feature-selection differences" (the seven names deliberately removed; 23 remain); "Feature catalogue" (the amplitude pair removed as largely redundant measures of band energy) | Exact comparison with the previous code (commit dc272ea) on all test cases, with the same explicit feature lists: 16,299 values, 0 differ, same columns (details below). Regression tests against `tests/data/` (removed features skipped): all pass, 0 values outside tolerance. New `tests/test_removed_features.py`: each removed name raises `ValueError`; `FEATURE_SET_ALL` equals the reference package's `ALL_FEATURES` and the removed names equal those in its `docs/definitions.md`; `feats_median_ch` keeps all columns of a request with fewer than 98 columns, as before (73 for all features except FD; 4 with empty rEEG bands and `spectral_power` only; 74 for the default call, including the 4 always-NaN IBI columns) |
 | 2 | `amplitude_skew` and `amplitude_kurtosis`: bias-corrected moments, as in the reference package | Biased moments: `abs(scipy.stats.skew(x, nan_policy="omit"))` and `scipy.stats.kurtosis(x, fisher=False)` (Pearson). `main_amplitude` removed NaN first; called directly, kurtosis gave NaN for NaN and both gave NaN for +/-inf. No explicit rule for short input: 2 values gave skewness 0 and kurtosis 1, 3 values gave a kurtosis. Constant input: NaN from scipy's own check | `abs(scipy.stats.skew(x, bias=False))` and `scipy.stats.kurtosis(x, fisher=False, bias=False)` (Pearson) on the finite values only (NaN and +/-inf ignored). NaN for fewer than 3 (skewness) or 4 (kurtosis) values, and for constant values (range not above eps * max(1, max abs value)), as in the reference package's `amplitude.py`. In the test data every value rose slightly (skewness +0.04-0.06 %, kurtosis +0.04-0.16 %). The skewness magnitude always increases with the correction (factor sqrt(n(n-1))/(n-2), +0.037 % for a full 64 s epoch, n = 4096), unless it is 0; the kurtosis usually does for EEG-like data but can decrease for very flat signals (4096 alternating -1/+1 values: 1.0 becomes 0.99902). No other output changes | "Skewness and kurtosis: correction to the earlier audit" (the reference package uses `bias=False`, and `fisher=False` for Pearson kurtosis; the older NEURAL Python port uses biased moments; example `[-2, -1, 0, 1, 2]`: kurtosis 1.8, original 1.7); "Feature catalogue" (absolute bias-corrected skewness; bias-corrected Pearson kurtosis, not excess kurtosis) | Same arrays through the reference package's `amplitude_features()` (in its own environment) and this repository's functions: 488 arrays (456 real band-filtered epochs of the synthetic test recordings, 32 synthetic edge cases), every finite value exactly equal (max abs and rel difference 0), NaN in the same places (skewness 10, kurtosis 12). Exact comparison with the previous code (commit 2bd0742) on all test cases: 15,070 values of other features, 0 differ; of each moment's 748 values, 684 changed, 64 NaN in both. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_moments` and the original: all pass, difference 0. New `tests/test_amplitude_moments.py` (closed-form formulas, the reference package's example, short, constant, NaN and +/-inf inputs) |
 | 3 | Band bins: each frequency band an independent closed interval (new `spectral_features.band_bins`), in all six band loops (`spectral_power`, `spectral_flatness`, `spectral_entropy`, `spectral_diff`, `connectivity_BSI`, `connectivity_coh`) and the total band of `gen_spectrum` (relative power, `spectral_edge_frequency`) | Chained rule, as in MATLAB NEURAL: the first band from `ceil(low * f)` to `floor(high * f)` (f = FFT bins per Hz); each later band from the previous band's last bin to `floor(high * f)`; indices clipped to [0, Nyquist], so a band above Nyquist repeated the Nyquist bin; no roundoff allowance. When an edge lay between bins, the later band also took the bin below its lower edge; gaps between disjoint bands were filled | Each band: bins `ceil(low * N / Fs)` to `floor(high * N / Fs)`, inclusive, independently of the other bands, with two floating-point steps allowed at each edge, at most the Nyquist bin (the reference package's `spectral.band_slice`). **This departs from MATLAB NEURAL's chained rule.** For bands that are not empty and not clipped at 0 or Nyquist, with no edge within about two floating-point steps of a bin, the two rules select the same bins exactly when, for every band after the first, `ceil(low * N / Fs)` equals the previous band's `floor(high * N / Fs)` (the two edges fall within the same bin step; usually one shared edge exactly on a bin); the first band's lower edge and the last band's upper edge do not matter. Exceptions: a band left empty under both rules can agree although the equation fails, and an edge within about two floating-point steps of a bin can agree or differ because of the two-step allowance. At 64 Hz with the default bands and windows this holds for every window-based spectrum; disjoint bands never satisfy it, and a non-integer sampling rate can break it for the default bands (63.93 Hz, 2 s window: theta started at bin 7, now 8). A band that a feature uses whose upper edge is not above its lower edge, or not below the Nyquist frequency, raises `ValueError` naming the band; a band with no bin gives NaN without warnings (details below). In the test data only `spectral_power` and `spectral_relative_power` change, and only in epochs that contain NaN (the periodogram is shortened by NaN removal): in the artefacts recording 108 of 168 values per feature, by up to 3.5 % (median 0.15 %), all lower; summary per band up to -0.42 % (`spectral_power`, theta) and -2.4 % (`spectral_relative_power`, theta); delta unchanged. The clean recording is unchanged | The reference package's `docs/definitions.md` documents independent closed intervals as the intended definition: "Feature conventions retained from version 0.1" (each band uses bins from `ceil(low * N / fs)` through `floor(high * N / fs)`, inclusive, with two floating-point steps for roundoff; shared boundary bins; a 4 Hz tone in a 16-second epoch at 98 Hz contributes bin 64 to both delta and theta). "NEURAL Python and MATLAB spectral comparison" (band bins: independent closed intervals in the reference package, chained in NEURAL Python and MATLAB; the chained loops can include a bin below the band's lower limit and fill gaps between disjoint bands). "Spectral details beyond the equations" (the paper's band sums include both endpoints; independent closed intervals follow that interpretation) | (a) `band_bins` against the reference package's `band_slice`: 61,864 band/length/rate cases (3,864 on and off the bin grid, 4,000 random off-grid bands, 54,000 edges within 4 floating-point steps of a bin; the two-step allowance changes the bins in over 21,000 of them): 0 differences. (b) `spectral_power` and `spectral_relative_power` against its `spectral_features()` on 38 NaN-free arrays (off-grid and on-grid lengths at 64 and 100 Hz; default, preterm, off-grid and disjoint bands; 1,140 values): max abs difference 1.7e-13, max rel 3.2e-15, 422 exactly equal (the previous rule: up to 6 % with preterm bands, and far more where an edge bin carried a strong component). (c) Exact comparison with the previous code (commit bac1c62) on all test cases: only `spectral_power` and `spectral_relative_power` change (342 of the 16,566 values compared, all lower; every other value is identical), only in epochs that contain NaN; the clean recording's 21 outputs are byte-identical. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_band_bins` and the original: all pass, difference 0. New `tests/test_band_bins.py`: the rule; `ValueError` for inverted, above-Nyquist and partly above-Nyquist bands and total bands, in each feature that uses the band; NaN without warnings for bands and total bands with no bin, and for coherence also with one 8 s window or an all-zero input; each feature checks only the bands it uses (the edge frequency needs no `freq_bands`, 27.5 Hz as before on the test signal); the exact FFT length in coherence (float16 sampling rate); the condition under which the two rules agree (3,000 seeded random draws); and, for every setting read from the stored reference files, identical values of the six other bin-based features under both rules |
+| 4 | Complete epochs only (`generate_all_features.overlap_epochs`, `epoch_count`, `get_max_num_epochs`) | `ceil((N - (L_epoch - L_hop)) / L_hop)` epochs, at least 1: a final epoch padded with NaN whenever the recording did not end on an epoch boundary (at 50 % overlap the padding alone stayed below the 50 % NaN threshold, so it was kept unless NaN already in the signal pushed it over); a recording shorter than one epoch gave one padded epoch (values if more than half of it was data, else NaN) | `(N - L_epoch) // L_hop + 1` complete epochs, no padding; the rows of `feats_median_ch` always equal the epochs. A recording shorter than one epoch raises `ValueError` naming both lengths when an epoch-based feature is requested, before any feature is computed; IBI-only and empty requests return (0 rows). The hop, the 50 % NaN rule and the windows within an epoch are unchanged. In the test data the complete epochs are bit-identical and only the padded epoch is dropped (300 s: 9 to 8 epochs); the summaries of 18 of 19 features change, by up to 15.7 % (clean) and 42.9 % (artefacts) at 300 s, because there are only 9 epochs; with the same generator up to 3.9 % / 3.7 % at 30 min and 1.4 % / 2.1 % at 60 min | The reference package's `docs/definitions.md`, "Missing data and recording boundaries": "Ordinary epochs are complete windows only: trailing incomplete data do not create an additional epoch. A recording shorter than one ordinary epoch raises `ValueError` when ordinary features are requested." "Version changes and validation limits": version 0.1's "... padded ordinary final epochs are replaced by the processing defaults above". Its README: "Shorter recordings raise `ValueError`; incomplete trailing windows are discarded." | (a) The reference package on identical preprocessed arrays (clean 300 s test recording) at NEURAL_py-like settings: `spectral_diff` agrees to 4.7e-16 relative per band, 1.1e-15 per channel and 2.2e-15 per channel and epoch (256 values); before, -8.4 % to +10.1 % per band. (b) Exact comparison with commit 90543fc on all test cases: 80 per-epoch arrays lose exactly the final epoch, every kept epoch bit-identical; the window, read-only and few-channel connectivity outputs are unchanged; IBI outputs unchanged (NaN on these signals). (c) Recording lengths L - 1, L, L + H - 1, L + H and L + 3H at 64, 256 and 63.93 Hz. Regression tests against the new section `with_neural_eeg_features_0.6.1_complete_epochs` and the original: all pass; a guard checks that the section equals the earlier values on the complete epochs. New `tests/test_complete_epochs.py` |
 
 ## 1. Removal of 7 features
 
@@ -283,10 +284,10 @@ it exactly; on the 8 complete epochs, the 256 per-channel values agree to
 
 **Not changed here (possible later steps).**
 
-- Final partial epoch: `generate_all_features` also computes a final epoch
+- Final partial epoch: `generate_all_features` also computed a final epoch
   padded with NaN (kept if less than 50 % NaN); the reference package uses
   complete epochs only. This affects every per-epoch feature and explains the
-  whole `spectral_diff` gap above. Planned as the next step.
+  whole `spectral_diff` gap above. Changed in section 4.
 - NaN inside epochs: NEURAL_py removes NaN samples before a spectrum
   (`gen_spectrum`; `spectral_power`, flatness, entropy, edge frequency) or
   skips NaN windows (`spectral_diff`); the reference package returns NaN for a
@@ -312,3 +313,132 @@ it exactly; on the 8 complete epochs, the 256 per-channel values agree to
 - `connectivity_BSI` with the periodogram method: the band bins use the FFT
   length of the last channel's spectrum, which differs from the others when
   channels lose different numbers of NaN samples (also before this change).
+
+## 4. Complete epochs only
+
+**Rule.** `generate_all_features.overlap_epochs` makes `(N - L_epoch) // L_hop
++ 1` epochs of `L_epoch = floor(EPOCH_LENGTH * Fs)` samples, epoch k holding
+samples `k * L_hop` to `k * L_hop + L_epoch - 1`; samples at the end that do not
+fill another epoch are not used. `generate_all_features.epoch_count` computes
+this count for `overlap_epochs` and `get_max_num_epochs` alike, so the rows
+preallocated for `feats_median_ch` always equal the epochs (at even and odd
+epoch lengths, e.g. 63.93 Hz). Before, NEURAL made
+`ceil((N - (L_epoch - L_hop)) / L_hop)` epochs, at least 1, padding the last one
+with NaN; at 50 % overlap the padding alone stayed below the 50 % NaN
+threshold, so that epoch was kept unless NaN already in the signal pushed it
+over the threshold. The hop is unchanged; at the tested settings (50 % and
+75 % overlap at 64, 100, 250, 256, 63.93 and 127.99 Hz) it equals the
+reference package's `size - int(size * overlap // 100)`.
+
+**Basis.** The reference package's `docs/definitions.md`, "Missing data and
+recording boundaries": "Ordinary epochs are complete windows only: trailing
+incomplete data do not create an additional epoch. A recording shorter than one
+ordinary epoch raises `ValueError` when ordinary features are requested." Its
+"Version changes and validation limits" lists version 0.1's behaviours that
+"are replaced by the processing defaults above", among them "padded ordinary
+final epochs". Its README: "Shorter recordings raise `ValueError`; incomplete
+trailing windows are discarded."
+
+**Short recordings.** If an epoch-based feature (spectral, amplitude, FD, rEEG
+or connectivity) is requested and the recording is shorter than one epoch,
+`generate_all_features` raises `ValueError` before computing any feature, e.g.
+`Recording is shorter than one analysis epoch: 4032 samples (63 s at 64 Hz); an
+epoch is 4096 samples (EPOCH_LENGTH = 64 s)`. Requests with only IBI features
+(computed on the whole recording) and an empty feature list return as before,
+with no rows in `feats_median_ch`. Before, such a recording gave one padded
+epoch: values if more than half of it was data, NaN otherwise. Because NEURAL_py
+still uses 64 s epochs, the minimum recording length here is 64 s, against 16 s
+with the reference package's defaults; this is temporary: step 3 adopts the
+reference package's default settings (16 s epochs with 75 % overlap), as its
+author has confirmed.
+
+**Size of the change.** In the test data the complete epochs are bit-identical
+and only the final, padded epoch is dropped. Summary per feature (largest
+change over the frequency bands), synthetic recordings from the regression
+tests' generator, all 19 non-IBI features:
+
+| Recording | Epochs before / after | Features whose summary changes | Largest change | Median over features of the largest change |
+| --- | --- | --- | --- | --- |
+| 300 s, clean (test data) | 9 / 8 | 18 of 19 | 15.7 % (`amplitude_skew`) | 4.2 % |
+| 300 s, artefacts (test data) | 9 / 8 | 18 of 19 | 42.9 % (`rEEG_asymmetry`) | 4.4 % |
+| 30 min, clean | 56 / 55 | 18 of 19 | 3.9 % (`rEEG_asymmetry`) | 0.42 % |
+| 30 min, artefacts | 56 / 55 | 18 of 19 | 3.7 % (`rEEG_asymmetry`) | 0.37 % |
+| 60 min, clean | 112 / 111 | 18 of 19 | 1.4 % (`amplitude_skew`) | 0.23 % |
+| 60 min, artefacts | 112 / 111 | 18 of 19 | 2.1 % (`amplitude_skew`) | 0.24 % |
+
+The 300 s sizes are large because those recordings have only 9 epochs, so one
+epoch more or less moves the medians a lot; for longer recordings the change
+shrinks (the 30 and 60 min recordings were made with the same generator; their
+time-limited artefacts all lie in the first 300 s, while the loose F4 and the
+shorted Cz electrodes span the whole recording). `spectral_edge_frequency` did
+not change in any of these. The edge-case inputs (120 s: 3 to 2 epochs) change
+in all 19 features, the row-index inputs in 18 of 19.
+
+**Comparison with the reference package.** The `spectral_diff` gap measured in
+section 3 (clean 300 s test recording, preprocessed by NEURAL_py; the reference
+package with NEURAL_py-like settings: 64 s / 50 % epochs, 2 s Hamming windows
+with 50 % overlap, `n_fft` 128, default bands) closes: per band the summaries
+agree to at most 5.2e-18 absolute and 4.7e-16 relative (theta exactly), per
+channel to 1.1e-15 relative, and per channel and epoch to 2.2e-15 relative (256
+values). Before: -8.4 % to +10.1 % per band, up to 25 % per channel. The
+artefacts recording cannot be compared: every epoch contains NaN, which the
+reference package rejects (step 5).
+
+**Before/after.** Exact comparison with the previous code (commit 90543fc) on
+all test cases: 80 per-epoch arrays lose exactly their final epoch and keep
+every other epoch bit-identical; the window-type outputs, the read-only arrays
+and the few-channel connectivity cases (64 s: one epoch under both rules) are
+unchanged; the IBI outputs are unchanged (they are NaN on these synthetic
+signals, so this shows only that the IBI path does not use the epochs). The
+row-index case that fails with a KeyError still fails in `overlap_epochs`, as
+the stored reference records.
+
+**Reference values.** `tests/make_reference.py` also runs the original NEURAL
+with the count lines of its `overlap_epochs` and `get_max_num_epochs` replaced,
+in memory, by `(N - L_epoch) // L_hop + 1`, and with the three fixes above
+applied too, and stores all 19 non-IBI features in a new section,
+`with_neural_eeg_features_0.6.1_complete_epochs`, of the clean, artefacts, edge
+cases and input types references (1,605, 1,285, 52 and 94 added lines). It is
+applied last, so it replaces the earlier sections for these features; those
+stay, as they document each change. `neural_outputs.with_fixes` now takes all
+sections out before applying them, and limits this section to the
+`generate_all_features` outputs, as `reference_windows.json` computes its
+features on one 64 s array, without epochs (that file is unchanged). The
+unchanged script first reproduced the committed files byte for byte; without
+the new section, the new "about" entry and the added order text in the three
+existing "about" entries, each new file is byte-identical to the committed
+one; CI's drift guard passes on them (24,147 floats). A regression test checks
+that the section's per-epoch values equal the earlier values on the complete
+epochs and that its summaries are their medians; it fails if the padded epoch
+is kept.
+
+**Not changed here.**
+
+- Epochs with NaN: the 50 % NaN rule stays; the reference package also
+  rejects spectral epochs with any NaN (step 5).
+- `preprocessing_EEG.overlap_epochs`: an unused copy that keeps the old rule
+  (now marked as such in a comment); its output fingerprint in
+  `reference_input_types.json` is unchanged (that file gains only the new
+  section and its "about" text).
+- The hop at custom settings: `utils.gen_epoch_window` computes
+  `ceil(L_epoch * (1 - overlap / 100))` in floating point, which can differ
+  by one sample from the reference package's
+  `size - int(size * overlap // 100)`: e.g. a 100-sample epoch at 44 %
+  overlap gives 57 here and 56 there.
+- rEEG: NEURAL_py still computes rEEG per ordinary epoch; the reference
+  package computes it on its own 128 s summary windows (its README: "Selecting
+  rEEG with the defaults requires at least 128 seconds of input").
+- `experiments/sensitivity/results.md` was made with the old rule; its tools
+  (`sensitivity_tools.epochs_of`) now follow the new one.
+
+## Assumptions for review
+
+- Missing data: the handling of NaN inside epochs will follow
+  neural_eeg_features 0.6.1 (step 5).
+- Filters: the feature filters will follow the 0.6.1 code exactly (step 4).
+- Referential check: the option to skip the referential check will be both a
+  NEURAL_py parameter and an app setting.
+- IBI: the burst detector and the IBI features will follow 0.6.1 (step 6).
+- Settings: neural_eeg_features 0.6.1 is the reference, and its default
+  settings (16 s epochs with 75 % overlap and the others) will be adopted in
+  step 3, as the reference package's author has confirmed.

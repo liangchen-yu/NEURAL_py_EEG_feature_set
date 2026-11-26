@@ -58,10 +58,19 @@ rule of neural_eeg_features 0.6.1: each band an independent closed interval
 the tests compare the two features with these values. The windows file has no
 spectral_power, so it has no such section.
 
+The main, edge and inputs files also have a section
+"with_neural_eeg_features_0.6.1_complete_epochs": the values of all 19
+non-IBI features of this repository from the original with its epoch count
+replaced, in memory, by the rule of neural_eeg_features 0.6.1 (complete
+epochs only, no NaN-padded final epoch; see with_complete_epochs) and with the
+three fixes above applied as well, so that for these features it replaces
+their sections. The windows file computes its features on one 64 s array,
+without epochs, so it has no such section.
+
 neural_outputs.with_fixes applies these sections in order: first the MATLAB
 spectral_diff fix (with_matlab_fix_a279ddd), then the 0.6.1 moments section,
-then the 0.6.1 band-bins section. Every other feature is compared with the
-original NEURAL's output. (The "about" texts are written into the reference
+then the 0.6.1 band-bins section, then the 0.6.1 complete-epochs section.
+Every other output is compared with the original NEURAL's output. (The "about" texts are written into the reference
 files; changing them means remaking the files, as the drift guard requires
 the committed and runner-made texts to be equal. The windows file, made in
 the 2020 environment and not remade, keeps its own text, ABOUT_FIX_WINDOWS.)
@@ -122,8 +131,10 @@ ABOUT_FIX_WINDOWS = ("spectral_diff values from the original NEURAL with only th
 # How the tests use the fix sections of the main, edge and inputs files.
 ABOUT_ORDER = (" The tests apply this file's fix sections in this order: with_matlab_fix_a279ddd "
                "(spectral_diff), with_neural_eeg_features_0.6.1_moments (amplitude_skew, amplitude_kurtosis), "
-               "with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power); every "
-               "other feature is compared with the original's values.")
+               "with_neural_eeg_features_0.6.1_band_bins (spectral_power, spectral_relative_power), "
+               "with_neural_eeg_features_0.6.1_complete_epochs (all 19 non-IBI features of this repository, "
+               "made with the three fixes before it as well, so it replaces them for these features); every "
+               "other output is compared with the original's values.")
 
 ABOUT_FIX = ABOUT_FIX_WINDOWS + ABOUT_ORDER
 
@@ -144,6 +155,14 @@ ABOUT_BAND_BINS = ("spectral_power and spectral_relative_power values from the o
                    "This repository uses that rule, so the tests compare the two features with these values."
                    + ABOUT_ORDER)
 
+ABOUT_COMPLETE_EPOCHS = ("Values of the 19 non-IBI features of this repository from the original NEURAL with its "
+                         "epoch count replaced by the rule of neural_eeg_features 0.6.1: complete epochs only, "
+                         "(N - L_epoch) // L_hop + 1 of them, without the original's NaN-padded final epoch "
+                         "(in overlap_epochs and get_max_num_epochs), and with the three fixes above applied as "
+                         "well (MATLAB a279ddd, the 0.6.1 moments and band bins). At the same places as in the "
+                         "rest of this file. This repository uses all of these, so the tests compare the 19 "
+                         "features with these values." + ABOUT_ORDER)
+
 ABOUT = {
     "what": "Reference values for tests/test_regression.py: the outputs of the original NEURAL "
             "(see made_with) for one synthetic EDF file (see input). Made by tests/make_reference.py.",
@@ -161,6 +180,7 @@ ABOUT = {
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
     neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
+    neural_outputs.COMPLETE_EPOCHS_SECTION: ABOUT_COMPLETE_EPOCHS,
 }
 
 ABOUT_EDGE = {
@@ -184,6 +204,7 @@ ABOUT_EDGE = {
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
     neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
+    neural_outputs.COMPLETE_EPOCHS_SECTION: ABOUT_COMPLETE_EPOCHS,
 }
 
 ABOUT_INPUTS = {
@@ -202,6 +223,7 @@ ABOUT_INPUTS = {
     neural_outputs.FIX_SECTION: ABOUT_FIX,
     neural_outputs.MOMENTS_SECTION: ABOUT_MOMENTS,
     neural_outputs.BAND_BINS_SECTION: ABOUT_BAND_BINS,
+    neural_outputs.COMPLETE_EPOCHS_SECTION: ABOUT_COMPLETE_EPOCHS,
 }
 
 ABOUT_WINDOWS = {
@@ -444,6 +466,54 @@ def band_bins_section(make):
         return neural_outputs.only_features(make(), neural_outputs.BAND_BINS_FEATURES)
 
 
+EPOCH_COUNT_ORIGINAL = """    N_epochs = int(np.ceil((N - (L_epoch - L_hop)) / L_hop))
+"""
+EPOCH_COUNT_FIXED = """    N_epochs = (N - L_epoch) // L_hop + 1 if N >= L_epoch else 0
+"""
+ROWS_ORIGINAL = """    a = np.ceil((N - (L_epoch - L_hop)) / L_hop)
+"""
+ROWS_FIXED = """    a = (N - L_epoch) // L_hop + 1 if N >= L_epoch else 0
+"""
+
+
+@contextlib.contextmanager
+def with_complete_epochs():
+    """The original NEURAL with only its epoch count replaced, in memory, by
+    the rule of neural_eeg_features 0.6.1: complete epochs only,
+    (N - L_epoch) // L_hop + 1, so no NaN-padded final epoch (the count line
+    of overlap_epochs and of get_max_num_epochs). Every stored input is longer
+    than one epoch. The installed files are not changed."""
+    from NEURAL_py_EEG import generate_all_features
+
+    originals = {"overlap_epochs": generate_all_features.overlap_epochs,
+                 "get_max_num_epochs": generate_all_features.get_max_num_epochs}
+    patched = {}
+    for name, old, new in (("overlap_epochs", EPOCH_COUNT_ORIGINAL, EPOCH_COUNT_FIXED),
+                           ("get_max_num_epochs", ROWS_ORIGINAL, ROWS_FIXED)):
+        source = inspect.getsource(originals[name])
+        if source.count(old) != 1:
+            raise SystemExit("No reference written: the epoch count is not in the original %s." % name)
+        patched[name] = source.replace(old, new)
+    # generate_all_features looks these functions up in the module when it is called.
+    try:
+        for name, source in patched.items():
+            exec(compile(source, "<%s with neural_eeg_features 0.6.1 complete epochs>" % name, "exec"),
+                 vars(generate_all_features))
+        yield
+    finally:
+        for name, function in originals.items():
+            setattr(generate_all_features, name, function)
+
+
+def complete_epochs_section(make):
+    """make() run again with complete epochs only and all the fixes above (the
+    MATLAB a279ddd fix, the 0.6.1 moments and band bins); the values of the 19
+    non-IBI features of this repository are kept."""
+    with with_matlab_fix_a279ddd(), with_neural_eeg_features_moments(), \
+            with_neural_eeg_features_band_bins(), with_complete_epochs():
+        return neural_outputs.only_features(make(), neural_outputs.COMPLETE_EPOCHS_FEATURES)
+
+
 def write_json(value, folder, name):
     path = Path(folder) / name
     with open(str(path), "w", encoding="utf-8", newline="\n") as f:
@@ -505,6 +575,9 @@ def make_main_reference(case, features, folder):
         neural_outputs.BAND_BINS_SECTION: band_bins_section(lambda: {"features": {
             feature: neural_outputs.compute_features(data, [feature])[feature]
             for feature in neural_outputs.BAND_BINS_FEATURES}}),
+        neural_outputs.COMPLETE_EPOCHS_SECTION: complete_epochs_section(lambda: {"features": {
+            feature: neural_outputs.compute_features(data, [feature])[feature]
+            for feature in neural_outputs.COMPLETE_EPOCHS_FEATURES}}),
     }
 
 
@@ -567,6 +640,8 @@ def make_edge(output):
         "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     reference[neural_outputs.BAND_BINS_SECTION] = band_bins_section(lambda: {
         "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
+    reference[neural_outputs.COMPLETE_EPOCHS_SECTION] = complete_epochs_section(lambda: {
+        "nan_input": edge_cases.nan_case_results(), "inf_line": edge_cases.inf_line_results()})
     print("edge cases: NaN artefact report %s; real +/-inf input: %s"
           % (reference["nan_input"]["artefact_report"]["percent_removed_worst_channel"], reference["inf_input"]))
     write_json(reference, output, "reference_edge_cases.json")
@@ -583,6 +658,8 @@ def make_inputs(output):
                  neural_outputs.MOMENTS_SECTION: moments_section(
                      lambda: {"index_types": edge_cases.index_type_results()}),
                  neural_outputs.BAND_BINS_SECTION: band_bins_section(
+                     lambda: {"index_types": edge_cases.index_type_results()}),
+                 neural_outputs.COMPLETE_EPOCHS_SECTION: complete_epochs_section(
                      lambda: {"index_types": edge_cases.index_type_results()})}
     write_json(reference, output, "reference_input_types.json")
 
