@@ -4,8 +4,11 @@ This experiment checks, on one computer, where NEURAL's pipeline magnifies
 last-digit rounding differences and whether second-order sections (SOS) reduce
 it. It uses only the two synthetic recordings of the regression tests and does
 not change NEURAL's code: the alternative filters are swapped in by the script
-while it runs. The results, with a short summary, are in
-[results.md](results.md).
+while it runs. It uses the original NEURAL's settings (64 s epochs and the
+rest; `original_settings()` in `tests/neural_outputs.py`), passed to
+`generate_all_features` as `params` when the NEURAL in use takes them, so it
+keeps studying that pipeline when this repository's defaults change. The
+results, with a short summary, are in [results.md](results.md).
 
 | File | What it is |
 |---|---|

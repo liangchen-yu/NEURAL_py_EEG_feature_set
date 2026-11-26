@@ -88,7 +88,59 @@ The last demo writes a file `demo_data.edf` in the current folder.
 
 
 All default parameters are set in the function `NEURAL_parameters()` in the file
-`src/NEURAL_py_EEG/NEURAL_parameters.py`.
+`src/NEURAL_py_EEG/NEURAL_parameters.py`. To use other settings, change a copy and pass it
+to `generate_all_features` as `params`:
+```
+  from NEURAL_py_EEG import NEURAL_parameters
+
+  params = NEURAL_parameters.NEURAL_parameters()
+  params['EPOCH_LENGTH'] = 32  # seconds
+  params['spectral']['freq_bands'] = [[0.5, 3], [3, 8], [8, 15], [15, 30]]
+  feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all = generate_all_features.generate_all_features(data_st, feat_set=feature_set, params=params)
+```
+`params` is not changed by the call. It must have the keys of `NEURAL_parameters()` at
+every level, with values of the same kind (number, text, list or dictionary); otherwise
+`ValueError` names the setting (`NEURAL_parameters.check_parameters`), before anything is
+computed. Each feature group reads its own settings (`params['spectral']`, `['amplitude']`,
+`['rEEG']`, `['FD']`, `['connectivity']`) and the epochs `params['EPOCH_LENGTH']`,
+`['EPOCH_OVERLAP']` and `['EPOCH_IGNORE_PRC_NANS']`. A given `feat_set` decides which
+features are computed and which columns there are; `params['FEATURE_SET_ALL']` is the
+feature set when `feat_set` is not given (and orders the columns). Every requested name must
+be one of the 23 supported features (`NEURAL_parameters.SUPPORTED_FEATURES`), else
+`ValueError` names it before anything is computed. Each band gets its own
+column: edges that are whole numbers or 0.5 are named as before (`05_4`, `13_30`), any other
+edge in full with `p` for the decimal point (`[0.5, 4.1]` gives `05_4p1`); two bands with the
+same edges raise `ValueError`.
+
+The top-level `FREQ_BANDS` and `FILTER_REPLACE_ARTEFACTS` are not read by
+`generate_all_features`; they only give the groups their defaults inside
+`NEURAL_parameters()`. Assigning a new value to them (`params['FREQ_BANDS'] = [...]`) therefore
+changes nothing; change a group's own `freq_bands` or `FILTER_REPLACE_ARTEFACTS` instead.
+In `NEURAL_parameters()`, though, the spectral, amplitude, rEEG and connectivity
+`freq_bands` are the very list `FREQ_BANDS`, so editing that list in place
+(`params['FREQ_BANDS'][0][1] = 3`) changes those four groups' bands (not FD's band or the
+spectral total band, which are separate lists). `FILTER_REPLACE_ARTEFACTS` is text, which
+cannot be edited in place. There is no warning for either. The preprocessing settings are not
+read by `generate_all_features` either: `preprocessing_EEG` takes `LP_fc`, `REMOVE_ART` and
+`ART_*` from `NEURAL_parameters()`, and nothing reads `Fs_new`, `BI_MONT`, `EEG_DATA_DIR`
+or `EEG_DATA_DIR_CSV` (the sampling rate after preprocessing is the `Fs_new` argument of
+`preprocessing_EEG.main_preprocessing`, default 64 Hz; the montage is that of
+`utils.set_bi_montage`).
+
+The defaults are those of the original NEURAL (commit 78c9425). Step 3 of the changes to match
+neural_eeg_features 0.6.1 changes several of them to that package's defaults (16 s epochs with
+75 % overlap, and others; see `docs/CHANGES_vs_neural_eeg_features_0.6.1.md`). These lines
+then restore the original values of the settings it changes (each change in step 3 adds its
+settings here):
+```
+  params = NEURAL_parameters.NEURAL_parameters()
+  params['EPOCH_LENGTH'], params['EPOCH_OVERLAP'] = 64, 50
+  params['spectral'].update(L_window=2, overlap=50, window_type='hamm')
+  params['connectivity'].update(method='bartlett-PSD', L_window=8, overlap=75, window_type='hamm')
+  params['rEEG']['freq_bands'] = [[0.5, 4], [4, 7], [7, 13], [13, 30]]
+```
+The tests pass all of the original settings, written out in `tests/neural_outputs.py`
+(`original_settings()`), to compare with the original NEURAL.
 
 Artefact removal follows `REMOVE_ART` (default 1, on), as in MATLAB NEURAL;
 `preprocessing_EEG.main_preprocessing(file, remove_art=False)` turns it off for
@@ -505,7 +557,12 @@ reference values for each group.
   the original plus all of these and complete epochs only (not in the window
   reference, which computes its features on one 64 s array, without
   epochs). The tests apply these four sets of values in that order, a later
-  one replacing an earlier one; each file's "about" text states it.
+  one replacing an earlier one; each file's "about" text states it. All
+  these values were made with the original's settings (its defaults); the
+  tests compute this repository's values with the same settings, written out
+  in `tests/neural_outputs.py` (`original_settings()`) and passed explicitly
+  (`generate_all_features(..., params=...)` and the feature functions'
+  `params`), so the reference values stay valid when the defaults change.
 - Comparison: the tests check every stored value, allowing a relative
   difference of 1e-9 (absolute 1e-12) so that they can also run with other
   library versions; NaN must be NaN in both, and counts, positions and text

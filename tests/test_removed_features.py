@@ -9,8 +9,11 @@ package; see docs/CHANGES_vs_neural_eeg_features_0.6.1.md).
   and the removed names listed in its docs/definitions.md. Those files are
   read as text (config.py is parsed, not imported or run).
 - feats_median_ch still keeps the first 98 columns (the slice is unchanged):
-  the same explicit feature list gives the same columns as before; a default
-  call gives 74 (before 98), including the 4 always-NaN IBI columns.
+  the same explicit feature list gives the same columns as before; the full
+  feature set gives 74 (before 98), including the 4 always-NaN IBI columns.
+  These column counts are those of the original NEURAL's settings (commit
+  78c9425; 4 frequency bands for rEEG), passed explicitly
+  (neural_outputs.original_settings()).
 
 The reference package is looked for in the folder given by the environment
 variable NEURAL_EEG_FEATURES_REFERENCE, else in neural_eeg_features-0.6.1 next
@@ -32,6 +35,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import neural_outputs
 from NEURAL_py_EEG import (NEURAL_parameters, amplitude_features, connectivity_features,
                            generate_all_features, rEEG)
 
@@ -134,8 +138,9 @@ def test_removed_feature_functions_are_gone(module, name):
 # ---------------------------------------------------------------------------
 # generate_all_features keeps the hard-coded [:98] slice of dc272ea: a request
 # with fewer than 98 columns keeps all of them, including the IBI ones, which
-# are always NaN in feats_median_ch. Every request now has at most 74 columns,
-# so this includes the default call (before: 102 columns, the 98 non-IBI kept).
+# are always NaN in feats_median_ch. With the original settings every request
+# now has at most 74 columns, so this includes the full feature set (before:
+# 102 columns, the 98 non-IBI kept).
 LONG_CHANNELS = ["F3_C3", "F4_C4", "C3_O1", "C4_O2"]
 
 
@@ -147,10 +152,13 @@ def long_data():
     return {"eeg_data": eeg, "Fs": FS, "ch_labels": LONG_CHANNELS}
 
 
-def median_ch_columns(data, feat_set):
+def median_ch_columns(data, feat_set, params=None):
+    """generate_all_features with params, by default the original settings."""
+    if params is None:
+        params = neural_outputs.original_settings()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # NEURAL's warnings for noise input are not tested here
-        out = generate_all_features.generate_all_features(copy.deepcopy(data), feat_set=feat_set)
+        out = generate_all_features.generate_all_features(copy.deepcopy(data), feat_set=feat_set, params=params)
     _, names, _, median_ch, _ = out
     return list(names), median_ch
 
@@ -163,17 +171,11 @@ def test_subset_keeps_all_its_columns(long_data):
     assert list(median_ch.columns) == names
 
 
-def test_unrequested_group_with_empty_bands_does_not_matter(long_data, monkeypatch):
+def test_unrequested_group_with_empty_bands_does_not_matter(long_data):
     """rEEG freq_bands = [] does not affect a spectral_power call (4 columns)."""
-    original = NEURAL_parameters.NEURAL_parameters
-
-    def params_without_reeg_bands():
-        params = original()
-        params["rEEG"]["freq_bands"] = []
-        return params
-
-    monkeypatch.setattr(NEURAL_parameters, "NEURAL_parameters", params_without_reeg_bands)
-    names, median_ch = median_ch_columns(long_data, ["spectral_power"])
+    params = neural_outputs.original_settings()
+    params["rEEG"]["freq_bands"] = []
+    names, median_ch = median_ch_columns(long_data, ["spectral_power"], params)
     assert names == ["spectral_power__05_4", "spectral_power__4_7", "spectral_power__7_13",
                      "spectral_power__13_30"]
     assert list(median_ch.columns) == names

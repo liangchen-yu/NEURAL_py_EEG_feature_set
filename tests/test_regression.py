@@ -14,6 +14,11 @@ reference files (neural_outputs.with_fixes).
 
 The 7 features removed to match neural_eeg_features 0.6.1 are still in the
 reference files; the tests skip them (neural_outputs.without_removed_features).
+
+The reference files were made with the original's settings (its defaults);
+the tests pass the same settings, written out in
+neural_outputs.original_settings(), to this repository's generate_all_features
+(params), so they keep checking those settings when the defaults change.
 """
 import pytest
 
@@ -77,9 +82,9 @@ def epochs_with_nan(data):
     final epoch) is that of preprocessing_EEG.overlap_epochs, the unchanged
     copy; generate_all_features now uses complete epochs only."""
     import numpy as np
-    from NEURAL_py_EEG import NEURAL_parameters, preprocessing_EEG
+    from NEURAL_py_EEG import preprocessing_EEG
 
-    params = NEURAL_parameters.NEURAL_parameters()
+    params = neural_outputs.original_settings()
     eeg = data["eeg_data"]
     kept = [c for c in data["ch_labels"] if not np.all(np.isnan(eeg[c]))]
     return np.array([[np.isnan(epoch).any() for epoch in preprocessing_EEG.overlap_epochs(
@@ -213,7 +218,7 @@ def test_feature_group_matches(case, group, run_preprocessing, reference):
     features = [f for f in neural_outputs.non_ibi_features() if neural_outputs.feature_group(f) == group]
     assert features
     for feature in features:
-        new = neural_outputs.compute_features(data, [feature])[feature]
+        new = neural_outputs.compute_features(data, [feature], neural_outputs.original_settings())[feature]
         if group != "connectivity":
             assert "feats_per_epochs" in new
         neural_outputs.compare_feature(new, reference[case]["features"][feature], case, group, feature)
@@ -223,7 +228,8 @@ def test_feature_group_matches(case, group, run_preprocessing, reference):
 def test_all_features_in_one_call_match(case, run_preprocessing, reference):
     """All 19 non-IBI features in one generate_all_features call (the usual way)."""
     data = run_preprocessing(case)[0]
-    results = neural_outputs.compute_features(data, neural_outputs.non_ibi_features())
+    results = neural_outputs.compute_features(data, neural_outputs.non_ibi_features(),
+                                              neural_outputs.original_settings())
     for feature, new in results.items():
         neural_outputs.compare_feature(new, reference[case]["features"][feature], case,
                                        "all 19 in one call", feature)

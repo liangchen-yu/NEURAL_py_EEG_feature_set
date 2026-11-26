@@ -15,6 +15,9 @@ made the reference files. spectral_diff is compared with the values of the
 original plus the MATLAB fix a279ddd, and amplitude_skew and
 amplitude_kurtosis with the values of the original plus the definitions of
 neural_eeg_features 0.6.1, stored in the same files (neural_outputs.with_fixes).
+The features are computed with the original's settings, passed explicitly
+(neural_outputs.original_settings()), so the comparisons stay valid when this
+repository's defaults change.
 """
 import json
 from pathlib import Path
@@ -75,13 +78,14 @@ def test_index_types_match_original(input_types):
     generate_all_features, the preprocessing steps and overlap_epochs: the same
     results as the original with pandas 2.3.3, and the same errors where the
     original stopped (pandas 3 alone made the datetime and text cases fail)."""
-    check(edge_cases.index_type_results(), input_types["index_types"], "index types")
+    check(edge_cases.index_type_results(neural_outputs.original_settings()), input_types["index_types"],
+          "index types")
 
 
 def test_read_only_arrays_match_original(input_types):
     """gen_coherence with read-only arrays (as pandas 3 gives) returns the
     original's values and leaves its inputs unchanged."""
-    new = edge_cases.read_only_results(read_only=True)
+    new = edge_cases.read_only_results(read_only=True, params=neural_outputs.original_settings())
     assert new["inputs_unchanged"] is True
     check(new, input_types["read_only"], "read-only arrays")
 
@@ -89,12 +93,12 @@ def test_read_only_arrays_match_original(input_types):
 def test_preexisting_nan_matches_original(edge):
     """NaN already in the data: the same cleaned EEG, artefact report and
     features, and the referential DataFrame filled in the same way."""
-    check(edge_cases.nan_case_results(), edge["nan_input"], "pre-existing NaN")
+    check(edge_cases.nan_case_results(neural_outputs.original_settings()), edge["nan_input"], "pre-existing NaN")
 
 
 def test_inf_line_matches_original(edge):
     """The line of remove_artefacts that turns +inf into NaN (and leaves -inf)."""
-    check(edge_cases.inf_line_results(), edge["inf_line"], "+inf line")
+    check(edge_cases.inf_line_results(neural_outputs.original_settings()), edge["inf_line"], "+inf line")
 
 
 def test_real_inf_input_fails_like_original(edge):
@@ -121,7 +125,7 @@ def test_edf_export_matches_original(edge, tmp_path):
 def test_window_types_match_2020_original(windows):
     """Windows 'tuke', 'bart', 'blackmanharris' and every window-dependent
     feature computed with them, against the original in the 2020 environment."""
-    new = edge_cases.window_results()
+    new = edge_cases.window_results(neural_outputs.original_settings())
     # Each feature must really have used its window type (otherwise the
     # comparison would pass without testing anything).
     for name, entry in new["features"].items():

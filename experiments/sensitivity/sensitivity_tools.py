@@ -17,6 +17,7 @@ All other filters (for example the 30 Hz FIR low-pass) are passed through untouc
 """
 import contextlib
 import copy
+import inspect
 import io
 import warnings
 
@@ -24,6 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy import signal as scipy_signal
 
+import neural_outputs  # tests/neural_outputs.py (run_sensitivity.py puts tests/ on the path)
 from NEURAL_py_EEG import (
     NEURAL_parameters,
     generate_all_features,
@@ -34,7 +36,13 @@ from NEURAL_py_EEG import (
 )
 from NEURAL_py_EEG.connectivity_features import channel_hemispheres
 
-PARAMS = NEURAL_parameters.NEURAL_parameters()
+# The experiment studies the original NEURAL's pipeline and settings (64 s
+# epochs, its (b, a) filters). This repository's generate_all_features takes
+# those settings explicitly (params; neural_outputs.original_settings()), so
+# the experiment keeps them when the defaults change. The original code has no
+# params argument and uses them as its defaults.
+TAKES_PARAMS = "params" in inspect.signature(generate_all_features.generate_all_features).parameters
+PARAMS = neural_outputs.original_settings() if TAKES_PARAMS else NEURAL_parameters.NEURAL_parameters()
 BANDS = [tuple(band) for band in PARAMS["FREQ_BANDS"]]  # (low, high) cut-offs in Hz
 FD_BAND = tuple(PARAMS["FD"]["freq_bands"])  # (0.5, 30)
 FS_NEW = 64  # output rate of preprocessing_EEG.main_preprocessing (its default)
@@ -393,11 +401,12 @@ def run_features(eeg, Fs, features=FEATURES):
     tests do), so that the per-epoch, per-channel values of every feature are
     kept (NEURAL returns them only for the last feature of a call)."""
     data = {"eeg_data": eeg, "Fs": Fs, "ch_labels": list(eeg.columns)}
+    settings = {"params": PARAMS} if TAKES_PARAMS else {}
     out = {}
     with quiet():
         for feature in features:
             per_epochs, names, feat_st, median_ch, median_all = generate_all_features.generate_all_features(
-                copy.deepcopy(data), feat_set=[feature]
+                copy.deepcopy(data), feat_set=[feature], **settings
             )
             columns = [n for n in names if n.startswith(feature + "__")]
             result = {

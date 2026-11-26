@@ -11,8 +11,14 @@ is identical on every computer. make_reference.py (with the original NEURAL)
 and the tests (with this repository's NEURAL) both use the *_results()
 functions below, so both run exactly the same steps. This file must also run
 on Python 3.7 (the window reference comes from the 2020 environment).
+
+The *_results() functions that compute features take params: None for the
+original NEURAL (make_reference.py), which uses its own defaults; the tests
+pass neural_outputs.original_settings(), the same settings written out, to
+this repository's NEURAL.
 """
 import contextlib
+import copy
 import io
 import math
 import os
@@ -126,10 +132,11 @@ def remove_artefacts(ref, bip):
             bip.copy(), np.array(list(bip.columns)), FS, ref, np.array(list(ref.columns)))
 
 
-def downstream(cleaned):
+def downstream(cleaned, params=None):
     """The rest of main_preprocessing (low-pass filter, downsample to 64 Hz)
     and all non-IBI features (26 in the original, 19 here) in one
-    generate_all_features call. Returns the
+    generate_all_features call, with the settings params (see the top of this
+    file). Returns the
     64 Hz data and each feature's summary (median over channels and epochs,
     one value per frequency band); fingerprints of the data check the rest."""
     from NEURAL_py_EEG import preprocessing_EEG
@@ -138,7 +145,7 @@ def downstream(cleaned):
         filtered = preprocessing_EEG.LPF_zero_phase(cleaned.copy(), FS)
         down, fs = preprocessing_EEG.signal_downsample(filtered.copy(), FS, 64)
         data = {"eeg_data": down, "Fs": fs, "ch_labels": list(down.columns)}
-        features = neural_outputs.compute_features(data, neural_outputs.non_ibi_features())
+        features = neural_outputs.compute_features(data, neural_outputs.non_ibi_features(), params)
     return down, {f: out["feats_median_all"] for f, out in features.items()}
 
 
@@ -210,10 +217,10 @@ def inf_stand_in():
 # ---------------------------------------------------------------------------
 # The cases: each returns plain values, saved as JSON by make_reference.py
 # ---------------------------------------------------------------------------
-def nan_case_results():
+def nan_case_results(params=None):
     ref, bip = nan_inputs()
     cleaned, removed = remove_artefacts(ref, bip)  # changes ref, as the original did
-    down, features = downstream(cleaned)
+    down, features = downstream(cleaned, params)
     return {
         "artefact_report": neural_outputs.artefact_report(removed),
         "cleaned": fingerprint(cleaned),
@@ -223,13 +230,13 @@ def nan_case_results():
     }
 
 
-def inf_line_results():
+def inf_line_results(params=None):
     ref = referential()
     with inf_stand_in() as calls:
         cleaned, removed = remove_artefacts(ref, bipolar(ref))
     if calls != BIPOLAR_ORDER:
         raise RuntimeError("art_per_channel was not called once per channel in the expected order")
-    down, features = downstream(cleaned)
+    down, features = downstream(cleaned, params)
     return {
         "artefact_report": neural_outputs.artefact_report(removed),
         "cleaned": fingerprint(cleaned),
@@ -299,7 +306,17 @@ def export_results(folder):
     return results
 
 
-def window_results():
+def group_settings(params, group):
+    """A fresh copy of one group's settings: from params, or (params=None)
+    from NEURAL's own NEURAL_parameters()."""
+    from NEURAL_py_EEG import NEURAL_parameters
+
+    if params is None:
+        return NEURAL_parameters.NEURAL_parameters()[group]
+    return copy.deepcopy(params[group])
+
+
+def window_results(params=None):
     """NEURAL's window functions for the types SciPy 1.13 removed from
     scipy.signal, at NEURAL's default lengths (64 Hz: 2 s = 128 samples for
     spectral and rEEG, 8 s = 512 for connectivity; every 4th value of the
@@ -316,9 +333,11 @@ def window_results():
       - connectivity_BSI with method "PSD" (the default "bartlett-PSD"
         always uses a rectangular window).
     Each computation gets its own fresh parameters (spectral_power, for
-    example, changes the dictionary it is given), and must really have asked
-    utils.get_window for its window type; "window_calls" records how often."""
-    from NEURAL_py_EEG import NEURAL_parameters, connectivity_features, rEEG, spectral_features, utils
+    example, changes the dictionary it is given), made from params (see the
+    top of this file) with only the window type changed, and must really have
+    asked utils.get_window for its window type; "window_calls" records how
+    often."""
+    from NEURAL_py_EEG import connectivity_features, rEEG, spectral_features, utils
 
     windows = {}
     for kind in WINDOW_TYPES:
@@ -333,26 +352,26 @@ def window_results():
     labels = np.array(list(bip.columns))
 
     def fresh(group, kind):
-        params = NEURAL_parameters.NEURAL_parameters()[group]
-        params["window_type"] = kind
-        return params
+        settings = group_settings(params, group)
+        settings["window_type"] = kind
+        return settings
 
     features = {}
     for kind in WINDOW_TYPES:
         for feature in SPECTRAL_WINDOW_FEATURES:
-            params = fresh("spectral", kind)
+            settings = fresh("spectral", kind)
             features["%s, %s window" % (feature, kind)] = windowed(
-                kind, lambda: spectral_features.main_spectral(x.copy(), 64, feature, params))
+                kind, lambda: spectral_features.main_spectral(x.copy(), 64, feature, settings))
         for feature in reeg_features():
-            params = fresh("rEEG", kind)
-            params["freq_bands"] = []
+            settings = fresh("rEEG", kind)
+            settings["freq_bands"] = []
             features["%s, %s window" % (feature, kind)] = windowed(
-                kind, lambda: rEEG.main_rEEG(x.copy(), 64, feature, params))
-        params = fresh("connectivity", kind)
-        params["method"] = "PSD"
+                kind, lambda: rEEG.main_rEEG(x.copy(), 64, feature, settings))
+        settings = fresh("connectivity", kind)
+        settings["method"] = "PSD"
         features["connectivity_BSI, %s window" % kind] = windowed(
             kind, lambda: connectivity_features.main_connectivity(
-                x_bipolar.copy(), 64, "connectivity_BSI", labels, params))
+                x_bipolar.copy(), 64, "connectivity_BSI", labels, settings))
     return {"windows": windows, "features": features}
 
 
@@ -413,10 +432,10 @@ def epochs_fingerprint(x_epochs, x_epochs_inds):
             "index_sum": int(np.sum(x_epochs_inds))}
 
 
-def index_type_results():
+def index_type_results(params=None):
     """The same EEG with other kinds of row index (datetime, text, integers in
     another order), through generate_all_features (all non-IBI features: 26
-    in the original, 19 here),
+    in the original, 19 here; settings params, see the top of this file),
     the preprocessing steps (remove_artefacts, low-pass filter, downsampling;
     clean data, so nothing is removed) and preprocessing_EEG.overlap_epochs.
     pandas < 3 picked samples by position for a datetime or text index and by
@@ -434,7 +453,7 @@ def index_type_results():
 
         def features():
             with contextlib.redirect_stdout(io.StringIO()):
-                out = neural_outputs.compute_features(data, neural_outputs.non_ibi_features())
+                out = neural_outputs.compute_features(data, neural_outputs.non_ibi_features(), params)
             return {f: values["feats_median_all"] for f, values in out.items()}
 
         result["generate_all_features"][kind] = outcome(features)
@@ -453,13 +472,14 @@ def index_type_results():
     return result
 
 
-def read_only_results(read_only=True):
+def read_only_results(read_only=True, params=None):
     """connectivity_features.gen_coherence (and gen_cross_spectrum inside it)
-    with two bipolar channels at 64 Hz. With read_only=True the arrays cannot
+    with two bipolar channels at 64 Hz and the connectivity settings of params
+    (see the top of this file). With read_only=True the arrays cannot
     be written to, like the arrays pandas 3 gives; the original needs
     writable ones, so its reference values were made with read_only=False.
     Also records whether the function left its input arrays unchanged."""
-    from NEURAL_py_EEG import NEURAL_parameters, connectivity_features
+    from NEURAL_py_EEG import connectivity_features
 
     bip64 = bipolar(referential(seconds=64)).iloc[::4]
     x = bip64["F3_C3"].to_numpy(dtype=float).copy()
@@ -468,8 +488,8 @@ def read_only_results(read_only=True):
     if read_only:
         x.setflags(write=False)
         y.setflags(write=False)
-    params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
-    c, pxx, pyy, f_scale, fp = connectivity_features.gen_coherence(x, y, 64, params)
+    settings = group_settings(params, "connectivity")
+    c, pxx, pyy, f_scale, fp = connectivity_features.gen_coherence(x, y, 64, settings)
     return {"coherence": c,
             "pxx": {"sum": float(np.sum(pxx)), "every_8th_value": pxx[::8]},
             "pyy": {"sum": float(np.sum(pyy)), "every_8th_value": pyy[::8]},

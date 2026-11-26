@@ -78,8 +78,20 @@ See the `demos.py` file for further examples. To run the demo code without previ
 
 
 
-All parameters are set the file
-`utils.NEURAL_parameters`.
+All default parameters are set in the function `NEURAL_parameters()` in the file
+`NEURAL_parameters.py`. To use other settings, change a copy and pass it to
+`generate_all_features` as `params`:
+```
+  import NEURAL_parameters
+
+  params = NEURAL_parameters.NEURAL_parameters()
+  params['EPOCH_LENGTH'] = 32  # seconds
+  feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all = generate_all_features.generate_all_features(data_st, feat_set=feature_set, params=params)
+```
+`params` is not changed by the call; a missing, unknown or mistyped setting raises
+`ValueError` naming it. The defaults are those of the original NEURAL (commit 78c9425) until
+step 3 of the changes to match neural_eeg_features 0.6.1; the repository's README shows how to
+restore the original settings, and what `generate_all_features` reads from `params`.
 
 
 ## Quantitative features

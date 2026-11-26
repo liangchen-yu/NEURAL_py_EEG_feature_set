@@ -15,11 +15,13 @@ import warnings
 import numpy as np
 import pytest
 
-from NEURAL_py_EEG import NEURAL_parameters, spectral_features
+import neural_outputs
+from NEURAL_py_EEG import spectral_features
 
 FS = 64
 
-# NEURAL's default spectral settings at 64 Hz: 2 s windows (128 samples, a hop
+# The original NEURAL's spectral settings (its defaults, commit 78c9425; passed
+# explicitly, neural_outputs.original_settings()) at 64 Hz: 2 s windows (128 samples, a hop
 # of 64 samples), so the spectrum has 2 bins per Hz. The bins of each default
 # band, first and last included: the first band starts at the bin of 0.5 Hz
 # rounded up, each later band starts at the previous band's last bin (as in
@@ -28,7 +30,7 @@ BAND_BINS = [(1, 8), (8, 14), (14, 26), (26, 60)]  # 0.5-4, 4-7, 7-13, 13-30 Hz
 
 
 def params():
-    return NEURAL_parameters.NEURAL_parameters()["spectral"]
+    return neural_outputs.original_settings()["spectral"]
 
 
 def noise(seconds, seed=0):

@@ -8,20 +8,23 @@ from NEURAL_py_EEG import connectivity_features
 from NEURAL_py_EEG import rEEG
 from NEURAL_py_EEG import fd_features
 from NEURAL_py_EEG import utils
+import copy
 import numpy as np
 import pandas as pd
 from NEURAL_py_EEG import IBI_features
 from NEURAL_py_EEG import NEURAL_parameters
 
 
-def size_feature(feat_name):
+def size_feature(feat_name, params=None):
     """
     size_feature: size of feature (e.g. array or 1 point)
 
-    Syntax: N = size_feature(feat_name)
+    Syntax: N = size_feature(feat_name, params)
 
     Inputs:
         feat_name - feature name (e.g. 'spectral_power')
+        params    - settings, as returned by NEURAL_parameters() (default:
+                    None, which uses NEURAL_parameters())
 
     Outputs:
         N - number of frequency bands
@@ -32,10 +35,12 @@ def size_feature(feat_name):
         print('Feature has %d frequency bands\n' % N)
 
     :param feat_name:  feature name (e.g. 'spectral_power')
+    :param params: settings (default None: NEURAL_parameters())
     :return: N - number of frequency bands
     """
 
-    params = NEURAL_parameters.NEURAL_parameters()
+    if params is None:
+        params = NEURAL_parameters.NEURAL_parameters()
     feat_group = feat_name.split("_")
 
     feat_group = feat_group[0]
@@ -136,9 +141,9 @@ def overlap_epochs(x, Fs, L_window, overlap=50, window_type="rect"):
     return x_epochs
 
 
-def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None):
+def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None, params=None):
     """
-    Syntax: feat_st = generate_all_features(data, save_path, channel_names, feat_set)
+    Syntax: feat_st = generate_all_features(data, save_path, channel_names, feat_set, params)
 
     Inputs:
         data          - either EEG filename or data dictionary with EEG
@@ -147,7 +152,34 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
                          e.g. ['C3-O1','C4-O2','F3-C3','F4-C4']
         feat_set       - list of features to compute,
                          e.g. ['spectral_relative_power','rEEG_CV', 'connectivity_BSI'];
-                         a name in NEURAL_parameters.REMOVED_FEATURES raises ValueError
+                         a name in NEURAL_parameters.REMOVED_FEATURES, or any other name
+                         not in NEURAL_parameters.SUPPORTED_FEATURES, raises ValueError
+        params         - settings: a dictionary like NEURAL_parameters() returns,
+                         e.g. params = NEURAL_parameters.NEURAL_parameters();
+                         params['EPOCH_LENGTH'] = 32. Default None: NEURAL_parameters().
+                         It must have the same keys at every level and the same
+                         kinds of value (NEURAL_parameters.check_parameters raises
+                         ValueError naming the setting otherwise). It is not changed;
+                         each feature function gets its own copy of its group's
+                         settings (params['spectral'], params['amplitude'],
+                         params['rEEG'], params['FD'], params['connectivity']).
+                         The epoch settings are params['EPOCH_LENGTH'],
+                         ['EPOCH_OVERLAP'] and ['EPOCH_IGNORE_PRC_NANS'].
+                         params['FEATURE_SET_ALL'] is the feature set when feat_set
+                         is None; a given feat_set decides both the features computed
+                         and the columns (FEATURE_SET_ALL then only orders them, see
+                         get_feature_names). Not read here: LP_fc, REMOVE_ART and
+                         ART_*, which preprocessing_EEG takes from NEURAL_parameters();
+                         Fs_new, BI_MONT, EEG_DATA_DIR and EEG_DATA_DIR_CSV, which
+                         nothing reads (main_preprocessing's Fs_new argument and
+                         utils.set_bi_montage's montage have their own defaults); and
+                         the top-level FREQ_BANDS and FILTER_REPLACE_ARTEFACTS, which
+                         only set the groups' defaults in NEURAL_parameters(): to
+                         change the bands or the NaN handling of a group, change
+                         its own 'freq_bands' or 'FILTER_REPLACE_ARTEFACTS'.
+                         Each band of a feature gets its own column (see
+                         feature_column_names); two bands with the same edges
+                         raise ValueError.
 
     Outputs:
         feats_per_epochs - features estimated over all epochs
@@ -169,9 +201,20 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
         # generate all features:
         feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all =
         generate_all_features.generate_all_features(data_st, feat_set=feature_set)
+
+        # with other settings, e.g. 32 s epochs:
+        from NEURAL_py_EEG import NEURAL_parameters
+        params = NEURAL_parameters.NEURAL_parameters()
+        params['EPOCH_LENGTH'] = 32
+        feats_per_epochs, feat_pd_names, feat_st, feats_median_ch, feats_median_all =
+        generate_all_features.generate_all_features(data_st, feat_set=feature_set, params=params)
     """
 
-    params = NEURAL_parameters.NEURAL_parameters()
+    if params is None:
+        params = NEURAL_parameters.NEURAL_parameters()
+    else:
+        NEURAL_parameters.check_parameters(params)
+        params = copy.deepcopy(params)  # the caller's settings are never changed
 
     # ---------------------------------------------------------------------
     # 1. load EEG data from .csv file
@@ -218,7 +261,10 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
     # ---------------------------------------------------------------------
     if feat_set is None:
         feat_set = params["FEATURE_SET_ALL"]
-    NEURAL_parameters.check_feature_names(feat_set)
+    # Removed and unknown (e.g. misspelt) names raise ValueError before any
+    # feature is computed; a supported name missing from a custom
+    # params['FEATURE_SET_ALL'] is still accepted.
+    NEURAL_parameters.check_requested_features(feat_set)
 
     # Epoch-based features need at least one complete epoch (as
     # neural_eeg_features 0.6.1): raise before computing anything. IBI-only
@@ -247,7 +293,7 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
     feat_st = dict()
     for n in range(N_feats):
         # print('%i / %i' % (n, N_feats-1))
-        L_feature = size_feature(feat_set[n])
+        L_feature = size_feature(feat_set[n], params)
         feat_group = feat_set[n].split("_")
         feat_group = feat_group[0]
 
@@ -284,18 +330,23 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
                         100 * (L_nans / len(x_epochs[e, :]))
                         < params["EPOCH_IGNORE_PRC_NANS"]
                     ):
+                        # Each call gets its own copy of its group's settings
+                        # (spectral_power, for one, changes the dictionary it is
+                        # given), as before, when each made its own with
+                        # NEURAL_parameters().
+                        group_params = copy.deepcopy(params[feat_group])
                         if feat_group == "spectral":
                             tmp = spectral_features.main_spectral(
-                                x_epochs[e, :], Fs, feat_set[n]
+                                x_epochs[e, :], Fs, feat_set[n], group_params
                             )
                         elif feat_group == "FD":
-                            tmp = fd_features.main_fd(x_epochs[e, :], Fs, feat_set[n])
+                            tmp = fd_features.main_fd(x_epochs[e, :], Fs, feat_set[n], group_params)
                         elif feat_group == "amplitude":
                             tmp = amplitude_features.main_amplitude(
-                                x_epochs[e, :], Fs, feat_set[n]
+                                x_epochs[e, :], Fs, feat_set[n], group_params
                             )
                         elif feat_group == "rEEG":
-                            tmp = rEEG.main_rEEG(x_epochs[e, :], Fs, feat_set[n])
+                            tmp = rEEG.main_rEEG(x_epochs[e, :], Fs, feat_set[n], group_params)
                         else:
                             raise ValueError(
                                 'Incorrect "feat_group" - should not have entered here'
@@ -352,7 +403,7 @@ def generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None
                 L_nans = len(np.where(np.isnan(x_ep))[0])
                 if 100 * (L_nans / x_ep.size) < params["EPOCH_IGNORE_PRC_NANS"]:
                     tmp = connectivity_features.main_connectivity(
-                        x_ep, Fs, feat_set[n], ch_labels
+                        x_ep, Fs, feat_set[n], ch_labels, copy.deepcopy(params["connectivity"])
                     )
                     feats_epochs[e, :] = tmp
             # Median over all epochs
@@ -402,48 +453,83 @@ def get_feature_names(params, feat_set):
     channel and frequency band. Array will be nans and one for every channel in the 'BI_MONT' param except for the
     connectivity features
 
+    The columns are those of the features in feat_set (each once), in the
+    order of params['FEATURE_SET_ALL']; a feature of feat_set that is not in
+    params['FEATURE_SET_ALL'] comes after those, in the order of feat_set.
+    (Before, a feature missing from params['FEATURE_SET_ALL'] got no column,
+    and generate_all_features failed after computing it.) Each feature has
+    one column per frequency band (feature_column_names).
+
     :param feat_set: The feature set being examined
     :param params: The parameters for the neural dataset
     :return: numpy string array containing feature names for all different frequency bands
     """
-    all_feats = params["FEATURE_SET_ALL"]
+    order = list(params["FEATURE_SET_ALL"])
+    features = list(dict.fromkeys(feat_set))  # each feature once, in the order given
+    features.sort(key=lambda feat: order.index(feat) if feat in order else len(order))  # stable
     names = []
-    for feat in all_feats:
-        if feat not in feat_set:
-            continue
-        feat_group = feat.split("_")
-        feat_group = feat_group[0]
+    for feat in features:
+        names.extend(feature_column_names(params, feat))
 
-        if feat_group == "IBI":
-            bands = np.array([0.5, 30])
-        elif (
-            "total_freq_bands" in params[feat_group].keys()
-            and feat == "spectral_edge_frequency"
-        ):
-            bands = np.array(params[feat_group]["total_freq_bands"])
-        else:
-            bands = np.array(params[feat_group]["freq_bands"])
+    return names
 
-        if bands.ndim == 1:
-            N_bands = 1
-        else:
-            N_bands = bands.shape[0]
 
-        for b in range(N_bands):
-            if N_bands == 1:
-                b1 = bands[0]
-                b2 = str(int(bands[1]))
-            else:
-                b1 = bands[b][0]
-                b2 = str(int(bands[b][1]))
+def feature_band_edges(params, feat_name):
+    """The (low, high) edges in Hz of each frequency band of feature
+    feat_name, one per column: the IBI features have the one band [0.5, 30],
+    spectral_edge_frequency the spectral 'total_freq_bands', every other
+    feature its group's 'freq_bands'. A flat list [low, high] is one band
+    (only its first two values are used, as main_fd does); otherwise each
+    row is a band, including a single row [[low, high]] (as a list or a
+    numpy array; before, a single row was taken for a flat pair and failed
+    with IndexError)."""
+    feat_group = feat_name.split("_")[0]
+    if feat_group == "IBI":
+        bands = np.array([0.5, 30])
+    elif (
+        "total_freq_bands" in params[feat_group].keys()
+        and feat_name == "spectral_edge_frequency"
+    ):
+        bands = np.array(params[feat_group]["total_freq_bands"])
+    else:
+        bands = np.array(params[feat_group]["freq_bands"])
 
-            if b1 != 0.5:
-                b1 = str(int(b1))
-            else:
-                b1 = str(b1).replace(".", "")
+    if bands.ndim == 1:
+        return [(bands[0], bands[1])]
+    return [(band[0], band[1]) for band in bands]
 
-            names.append(feat + "__" + b1 + "_" + b2)
 
+def band_edge_label(edge):
+    """One band edge as written in a column name: a whole number as an
+    integer ('4', '30') and 0.5 as '05', as before (so the default column
+    names are unchanged); any other value in full, with 'p' for the decimal
+    point ('4p1', '0p25', '1p5'). Distinct edges thus get distinct labels.
+    (Before, every edge except a lower edge of 0.5 was cut to its integer
+    part: bands [0.5, 4.1] and [0.5, 4.9] both gave '05_4', and the second
+    band's values overwrote the first's.)"""
+    edge = float(edge)
+    if edge == 0.5:
+        return "05"
+    if edge.is_integer():
+        return str(int(edge))
+    return repr(edge).replace(".", "p")
+
+
+def feature_column_names(params, feat_name):
+    """The column names of feature feat_name, one per band of
+    feature_band_edges: feat_name + '__' + low + '_' + high (band_edge_label),
+    e.g. 'spectral_power__05_4'. Two bands with the same edges would give
+    the same name, so that raises ValueError naming them."""
+    edges = feature_band_edges(params, feat_name)
+    names = [feat_name + "__" + band_edge_label(low) + "_" + band_edge_label(high) for low, high in edges]
+    for i, name in enumerate(names):
+        if name in names[:i]:
+            first = names.index(name)
+            raise ValueError(
+                "%s: frequency bands %d %r and %d %r give the same column name %r; "
+                "each band of a feature must differ"
+                % (feat_name, first, [float(e) for e in edges[first]], i, [float(e) for e in edges[i]], name)
+            )
     return names
 
 
@@ -489,38 +575,8 @@ def add_feat_data_to_array(all_data, new_data, feat_pd_names, feat_name, params)
                           frequency, and channel labels. Data are pandas DataFrame
     """
 
-    feat_group = feat_name.split("_")
-    feat_group = feat_group[0]
-    if feat_group == "IBI":
-        bands = np.array([0.5, 30])
-    elif (
-        "total_freq_bands" in params[feat_group].keys()
-        and feat_name == "spectral_edge_frequency"
-    ):
-        bands = np.array(params[feat_group]["total_freq_bands"])
-    else:
-        bands = np.array(params[feat_group]["freq_bands"])
-
-    if bands.ndim == 1:
-        N_bands = 1
-    else:
-        N_bands = bands.shape[0]
-
-    for b in range(N_bands):
-
-        if N_bands == 1:
-            b1 = bands[0]
-            b2 = str(int(bands[1]))
-        else:
-            b1 = bands[b][0]
-            b2 = str(int(bands[b][1]))
-
-        if b1 != 0.5:
-            b1 = str(int(b1))
-        else:
-            b1 = str(b1).replace(".", "")
-
-        a_feat_name = feat_name + "__" + b1 + "_" + b2
+    # the same column names as get_feature_names, band b of new_data in column b
+    for b, a_feat_name in enumerate(feature_column_names(params, feat_name)):
 
         if a_feat_name not in feat_pd_names:
             raise ValueError(

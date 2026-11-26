@@ -176,6 +176,52 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     `neural_outputs.with_fixes` now takes all sections out before applying them and limits
     this one to the `generate_all_features` outputs; `reference_windows.json` (no epochs) is
     unchanged. New: `tests/test_complete_epochs.py`.
+- **Settings passed to `generate_all_features`** (prepares the adoption of the reference
+  package's default settings; no output changes): new keyword argument
+  `generate_all_features(..., params=None)`, last, so positional calls are unaffected. `None`
+  uses `NEURAL_parameters()` as before. Otherwise `params` is checked first
+  (`NEURAL_parameters.check_parameters`): the keys of `NEURAL_parameters()` at every level,
+  none missing and none unknown, and values of the same kind (number, text, list, dictionary;
+  FD `method` may be `None`; `REMOVE_ART` and rEEG `APPLY_LOG_LINEAR_SCALE` may be
+  `True`/`False`); otherwise `ValueError` names each problem, before anything is computed. It
+  is copied and never changed; every feature function call gets its own copy of its group's
+  settings, as when each made its own with `NEURAL_parameters()`. `size_feature` also takes
+  `params`. `generate_all_features` does not read the preprocessing settings (`LP_fc`,
+  `REMOVE_ART` and `ART_*` are read by `preprocessing_EEG`; nothing reads `Fs_new`, `BI_MONT`,
+  `EEG_DATA_DIR` or `EEG_DATA_DIR_CSV`: the rate after preprocessing is
+  `main_preprocessing`'s `Fs_new` argument) or the top-level `FREQ_BANDS` and
+  `FILTER_REPLACE_ARTEFACTS` (the groups have their own; editing the `FREQ_BANDS` list in
+  place does change the spectral, amplitude, rEEG and connectivity groups, which share it).
+  - Column names (`get_feature_names`, `add_feat_data_to_array`, now through
+    `feature_band_edges`, `band_edge_label` and `feature_column_names`), three faults that
+    also occur with an edited `NEURAL_parameters()` on the previous code: a single band
+    `[[low, high]]` (list or array) failed with `IndexError` and now works; distinct bands
+    could share a name, as every edge but a lower 0.5 was cut to an integer (`[0.5, 4.1]` and
+    `[0.5, 4.9]` were both `05_4`, both columns holding the second band's summary), now any
+    edge that is not a whole number or 0.5 is written in full with `p` for the point (`05_4p1`,
+    `05_4p9`; non-default bands with such edges are renamed), and the same band twice raises
+    `ValueError`; a given `feat_set` now decides the columns (a feature missing from
+    `FEATURE_SET_ALL` was computed and then failed); `FEATURE_SET_ALL` still orders them.
+    All default column names are unchanged.
+  - Feature names: a requested name that is not one of the 23 supported features
+    (`NEURAL_parameters.SUPPORTED_FEATURES`, `check_requested_features`) raises `ValueError`
+    naming it, before any feature is computed (before: also `ValueError`, but later and with
+    varying messages); the 7 removed names keep their own message. A supported feature
+    missing from a custom `FEATURE_SET_ALL` is accepted.
+  - The tests now pass the original NEURAL's settings explicitly: `tests/neural_outputs.py`
+    writes them out (`original_settings()`, as the original's `NEURAL_parameters()` makes them,
+    with its `FEATURE_SET_ALL` less the 7 removed features), and the regression tests, the
+    edge cases and the unit tests whose values were recorded with them pass them through
+    `params`, so they keep testing the original settings when the defaults change. Checked
+    against the original's `NEURAL_parameters()`: equal in its own environment and in the 2020
+    environment. `make_reference.py` is unchanged and still makes byte-identical reference
+    files. The sensitivity experiment also runs with the original settings (passed when the
+    NEURAL in use takes `params`).
+  - Exact comparison with the previous code (commit c205097) on all test cases, with
+    `params=None` and with the original settings passed: every output of every
+    `generate_all_features` call, the printed text and the warnings are identical (only the
+    line numbers of the warnings raised in `generate_all_features.py` moved). New:
+    `tests/test_params.py`.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit

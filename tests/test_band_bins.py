@@ -22,6 +22,10 @@ Bands are checked as in the reference package: a band whose upper edge is not
 above its lower edge, or not below the Nyquist frequency, raises ValueError
 naming the band; a valid band with no bins gives NaN, without warnings.
 
+The settings are those of the original NEURAL (commit 78c9425), passed
+explicitly (neural_outputs.original_settings()): the recorded values below
+and the stored reference files were made with them.
+
 Synthetic values only.
 """
 import json
@@ -34,6 +38,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import neural_outputs
 from NEURAL_py_EEG import NEURAL_parameters, connectivity_features, generate_all_features, spectral_features
 
 DATA = Path(__file__).parent / "data"
@@ -87,9 +92,9 @@ def signals(seconds=64, with_nan=False):
 
 def feature(name, x, bands=None, total=None, Fs=FS, **settings):
     """One feature through NEURAL's own entry points (main_spectral or
-    main_connectivity), with fresh default parameters."""
+    main_connectivity), with a fresh copy of the original settings."""
     group = "connectivity" if name.startswith("connectivity") else "spectral"
-    params = NEURAL_parameters.NEURAL_parameters()[group]
+    params = neural_outputs.original_settings()[group]
     if bands is not None:
         params["freq_bands"] = [list(b) for b in bands]
     if total is not None:
@@ -311,7 +316,8 @@ def test_total_band_above_nyquist_rejected_only_where_used(name):
 
 
 # The values of the code before this change (commit bac1c62) for signals()[0]
-# with the default parameters; it gave the same with total_freq_bands = [NaN, NaN].
+# with its default parameters (the original settings); it gave the same with
+# total_freq_bands = [NaN, NaN].
 BEFORE_VALUES = {
     "spectral_power": [0.6221482651, 0.0918949363, 0.3101098395, 0.5362514695],
     "spectral_flatness": [0.4701422782, 0.9946928675, 0.7978572608, 0.9916814088],
@@ -328,7 +334,7 @@ def test_unused_total_band_does_not_affect_other_features(name):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         through_main = feature(name, signals(), total=[float("nan"), float("nan")])
-        params = NEURAL_parameters.NEURAL_parameters()["spectral"]
+        params = neural_outputs.original_settings()["spectral"]
         params["total_freq_bands"] = [float("nan"), float("nan")]
         function = getattr(spectral_features, name)
         direct = np.asarray(function(signals()[0].copy(), FS, name, params), float)
@@ -347,7 +353,7 @@ def test_total_band_must_be_finite(name, total):
     message = r"spectral total_freq_bands \[.*\] Hz: the edges must be finite numbers"
     with pytest.raises(ValueError, match=message):
         feature(name, signals(), total=total)
-    params = NEURAL_parameters.NEURAL_parameters()["spectral"]
+    params = neural_outputs.original_settings()["spectral"]
     params["total_freq_bands"] = total
     function = spectral_features.spectral_power if name == "spectral_relative_power" else \
         spectral_features.spectral_edge_frequency
@@ -367,7 +373,7 @@ def test_edge_frequency_needs_no_freq_bands():
     """The spectral edge frequency uses only the total band: without a
     'freq_bands' key it gives the value of the code before this change
     (commit bac1c62: 27.5 Hz for this signal)."""
-    params = NEURAL_parameters.NEURAL_parameters()["spectral"]
+    params = neural_outputs.original_settings()["spectral"]
     del params["freq_bands"]
     value = spectral_features.main_spectral(signals()[0].copy(), FS, "spectral_edge_frequency", params)
     assert value == 27.5
@@ -376,7 +382,7 @@ def test_edge_frequency_needs_no_freq_bands():
 
 @pytest.mark.parametrize("name", [f for f in SPECTRAL_FEATURES if f in spectral_features.BAND_FEATURES])
 def test_band_features_need_freq_bands(name):
-    params = NEURAL_parameters.NEURAL_parameters()["spectral"]
+    params = neural_outputs.original_settings()["spectral"]
     del params["freq_bands"]
     with pytest.raises(KeyError):
         spectral_features.main_spectral(signals()[0].copy(), FS, name, params)
@@ -468,7 +474,7 @@ def test_coherence_uses_the_exact_fft_length(monkeypatch):
         return real(low, high, n_fft, Fs)
 
     def coherence(Fs):
-        params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
+        params = neural_outputs.original_settings()["connectivity"]
         params["L_window"] = 2.1
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)  # NEURAL's own channel warnings
@@ -487,7 +493,7 @@ def test_coherence_uses_the_exact_fft_length(monkeypatch):
 
 def test_gen_coherence_still_returns_five_values():
     x = signals()
-    params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
+    params = neural_outputs.original_settings()["connectivity"]
     assert len(connectivity_features.gen_coherence(x[0], x[1], FS, params)) == 5
 
 
@@ -552,7 +558,7 @@ def test_other_bin_features_are_unchanged_for_every_stored_setting(monkeypatch):
     assert bands == [(0.5, 4.0), (4.0, 7.0), (7.0, 13.0), (13.0, 30.0)]
     assert totals == [(0.5, 30.0)]
     assert window_types == ["bart", "blackmanharris", "tuke"] and lengths == [128, 512]
-    params = NEURAL_parameters.NEURAL_parameters()
+    params = neural_outputs.original_settings()
     # the stored data were made with these windows: 2 s (128) and 8 s (512) at 64 Hz
     assert {int(params["spectral"]["L_window"] * 64), int(params["connectivity"]["L_window"] * 64)} == set(lengths)
 

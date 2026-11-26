@@ -145,12 +145,11 @@ def main_fd(x, fs, feat_name="fd_higuchi", params=None):
     [low, high] pair (default 0.5-30 Hz) is one band. Every band is filtered
     from the original x. Empty 'freq_bands' gives one value from the
     unfiltered x.
-    main_fd accepts any of these shapes, but generate_all_features' column
-    naming (get_feature_names, add_feat_data_to_array) supports only a
-    flat list (a [low, high] pair, or a longer list such as [0.5, 4, 30],
-    which works but uses only its first two values) or a list of two or
-    more [low, high] bands; it fails for [[low, high]] (one band as a
-    nested list) and for [].
+    main_fd accepts any of these shapes; generate_all_features' column
+    naming (generate_all_features.feature_band_edges) supports a flat list
+    (a [low, high] pair, or a longer list such as [0.5, 4, 30], which works
+    but uses only its first two values) or a list of one or more
+    [low, high] bands; it fails for [].
     A missing or None params['method'] selects Higuchi, as main_fd did
     before it read 'method'. Results can still differ from that older code
     where the band handling changed (e.g. 4 bands now give 4 values, not 2).

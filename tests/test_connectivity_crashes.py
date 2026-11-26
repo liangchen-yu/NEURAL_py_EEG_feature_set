@@ -12,6 +12,8 @@ a band of only the 0 Hz bin).
 
 Input: 64 s of the deterministic synthetic EEG from synthetic_edf.py, as
 NEURAL's 8 bipolar channels (edge_cases.bipolar), every 4th sample (64 Hz).
+Settings: the original NEURAL's (commit 78c9425; passed explicitly,
+neural_outputs.original_settings()), with which the values below were recorded.
 """
 import warnings
 
@@ -19,7 +21,8 @@ import numpy as np
 import pytest
 
 import edge_cases
-from NEURAL_py_EEG import NEURAL_parameters, connectivity_features, spectral_features
+import neural_outputs
+from NEURAL_py_EEG import connectivity_features, spectral_features
 
 FS = 64
 FEATURES = [
@@ -29,7 +32,7 @@ FEATURES = [
 ]
 # connectivity_coh_max and connectivity_coh_freqmax were also tested here;
 # they were removed to match neural_eeg_features 0.6.1.
-N_BANDS = len(NEURAL_parameters.NEURAL_parameters()["connectivity"]["freq_bands"])
+N_BANDS = len(neural_outputs.original_settings()["connectivity"]["freq_bands"])
 
 # 8-channel results of the code before the fix (commit 5c98791) on the input
 # below; the fix must not change them.
@@ -53,6 +56,11 @@ def channels(eeg, names):
 
 
 def connectivity(x, labels, feature, params=None):
+    """main_connectivity with the given settings, by default the original
+    NEURAL's (neural_outputs.original_settings()), with which the values
+    below were recorded."""
+    if params is None:
+        params = neural_outputs.original_settings()["connectivity"]
     with warnings.catch_warnings():
         # NEURAL's own DeprecationWarnings (e.g. "left or right channel?") are not tested here
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -96,7 +104,7 @@ def whole_spectrum_bsi(eeg, left, right):
     """BSI averaged over every frequency of the two channels' spectra (no band
     selection): what the old code returned for a band of only the 0 Hz bin."""
     spectra = [spectral_features.gen_spectrum(channels(eeg, [name])[0][0], FS,
-                                              NEURAL_parameters.NEURAL_parameters()["connectivity"], 1)[0]
+                                              neural_outputs.original_settings()["connectivity"], 1)[0]
                for name in (left, right)]
     return np.nanmean(np.abs((spectra[0] - spectra[1]) / (spectra[0] + spectra[1])))
 
@@ -113,7 +121,7 @@ def test_bsi_one_left_channel_band_at_0_hz(eeg, order):
     tests/neural_outputs.py (rtol 1e-9, atol 1e-12; NaN must match NaN).
     Exact bytes are not required, because they differ across machines
     (rounding in the last bits)."""
-    params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
+    params = neural_outputs.original_settings()["connectivity"]
     params["freq_bands"] = [[0, 0.1]]
     x, labels = channels(eeg, ONE_LEFT_TWO_RIGHT[order])
     result = connectivity(x, labels, "connectivity_BSI", params)
@@ -142,7 +150,7 @@ def test_no_labels_warns_and_returns_nan_per_band(eeg, names, feature):
 def test_no_left_right_pairs_gives_nan_per_band(eeg, n_bands, feature):
     """Only left channels, so no pairs (MATLAB c521173): one NaN per
     frequency band. Before, always 4 NaN values, whatever the number of bands."""
-    params = NEURAL_parameters.NEURAL_parameters()["connectivity"]
+    params = neural_outputs.original_settings()["connectivity"]
     params["freq_bands"] = params["freq_bands"][:n_bands]
     x, labels = channels(eeg, ["C3_O1", "C3_T3", "F3_C3"])
     result = connectivity(x, labels, feature, params)

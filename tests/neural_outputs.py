@@ -61,6 +61,81 @@ REMOVED_FEATURES = (
 )
 
 
+def original_settings():
+    """The settings of the original NEURAL (commit 78c9425), written out here
+    as its NEURAL_parameters() makes them, not read from this repository's
+    NEURAL. The reference files in tests/data were made with these settings
+    (the original's defaults), so the tests pass them to this repository's
+    generate_all_features (params) and feature functions explicitly: the
+    comparisons stay at the original settings when this repository's
+    defaults change to those of neural_eeg_features 0.6.1.
+
+    One difference: FEATURE_SET_ALL leaves out the 7 REMOVED_FEATURES (the
+    original lists 30 names, this repository accepts 23). Each call returns a
+    new dictionary. Like the original, the four groups' 'freq_bands' are the
+    same list as FREQ_BANDS."""
+    params = dict()
+    params['LP_fc'] = 30
+    params['Fs_new'] = 64
+    params['EEG_DATA_DIR'] = ''
+    params['EEG_DATA_DIR_CSV'] = ''
+    params['BI_MONT'] = [['F4', 'C4'], ['F3', 'C3'], ['C4', 'T4'], ['C3', 'T3'], ['C4', 'Cz'], ['Cz', 'C3'],
+                         ['C4', 'O2'], ['C3', 'O1']]
+    params['REMOVE_ART'] = 1
+    params['ART_HIGH_VOLT'] = 1500
+    params['ART_TIME_COLLAR'] = 10
+    params['ART_DIFF_VOLT'] = 200
+    params['ART_DIFF_TIME_COLLAR'] = 0.5
+    params['ART_DIFF_MIN_TIME'] = 0.1
+    params['ART_ELEC_CHECK'] = 1
+    params['ART_REF_LOW_CORR'] = 0.15
+    params['FILTER_REPLACE_ARTEFACTS'] = 'nans'
+    for group in ('amplitude', 'rEEG', 'connectivity', 'FD'):
+        params[group] = {'FILTER_REPLACE_ARTEFACTS': params['FILTER_REPLACE_ARTEFACTS']}
+    params['FEATURE_SET_ALL'] = [name for name in ORIGINAL_FEATURE_SET_ALL if name not in REMOVED_FEATURES]
+    params['FREQ_BANDS'] = [[0.5, 4], [4, 7], [7, 13], [13, 30]]
+    params['spectral'] = dict()
+    params['spectral']['method'] = 'PSD'
+    params['spectral']['L_window'] = 2
+    params['spectral']['window_type'] = 'hamm'
+    params['spectral']['overlap'] = 50
+    params['spectral']['freq_bands'] = params['FREQ_BANDS']
+    params['spectral']['total_freq_bands'] = [params['FREQ_BANDS'][0][0], params['FREQ_BANDS'][-1][-1]]
+    params['spectral']['SEF'] = 0.95
+    params['FD']['method'] = 'higuchi'
+    params['FD']['freq_bands'] = [params['FREQ_BANDS'][0][0], params['FREQ_BANDS'][-1][-1]]
+    params['FD']['qmax'] = 6
+    params['amplitude']['freq_bands'] = params['FREQ_BANDS']
+    params['rEEG']['L_window'] = 2
+    params['rEEG']['window_type'] = 'rect'
+    params['rEEG']['overlap'] = 0
+    params['rEEG']['APPLY_LOG_LINEAR_SCALE'] = 0
+    params['rEEG']['freq_bands'] = params['FREQ_BANDS']
+    params['connectivity']['method'] = 'bartlett-PSD'
+    params['connectivity']['freq_bands'] = params['FREQ_BANDS']
+    params['connectivity']['L_window'] = 8
+    params['connectivity']['overlap'] = 75
+    params['connectivity']['window_type'] = 'hamm'
+    params['connectivity']['coherence_zero_level'] = 'analytic'
+    params['connectivity']['coherence_zero_alpha'] = 0.05
+    params['connectivity']['coherence_surr_iter'] = 500
+    params['EPOCH_LENGTH'] = 64
+    params['EPOCH_OVERLAP'] = 50
+    params['EPOCH_IGNORE_PRC_NANS'] = 50
+    return params
+
+
+# The original's FEATURE_SET_ALL (commit 78c9425), in its order: 30 names.
+ORIGINAL_FEATURE_SET_ALL = (
+    "spectral_power", "spectral_relative_power", "spectral_flatness", "spectral_diff", "spectral_entropy",
+    "spectral_edge_frequency", "FD", "amplitude_total_power", "amplitude_SD", "amplitude_skew",
+    "amplitude_kurtosis", "amplitude_env_mean", "amplitude_env_SD", "connectivity_BSI", "connectivity_corr",
+    "connectivity_coh_mean", "connectivity_coh_max", "connectivity_coh_freqmax", "rEEG_mean", "rEEG_median",
+    "rEEG_lower_margin", "rEEG_upper_margin", "rEEG_width", "rEEG_SD", "rEEG_CV", "rEEG_asymmetry",
+    "IBI_length_max", "IBI_length_median", "IBI_burst_prc", "IBI_burst_number",
+)
+
+
 def is_removed_feature(key):
     """True for a removed feature's name, or a key that starts with it and a
     comma (e.g. "rEEG_SD, tuke window")."""
@@ -138,9 +213,13 @@ def preprocessed_summary(data_dict):
     }
 
 
-def compute_features(data_dict, features):
-    """One call of NEURAL's generate_all_features for the given features.
-    Returns NEURAL's outputs split per feature:
+def compute_features(data_dict, features, params=None):
+    """One call of NEURAL's generate_all_features for the given features, with
+    the settings params (this repository's generate_all_features(...,
+    params=params)); params=None makes the call without it, as
+    make_reference.py does for the original NEURAL, which has no params and
+    uses its own defaults (original_settings). Returns NEURAL's outputs split
+    per feature:
       columns           NEURAL's column names, one per frequency band
       feats_median_all  median over channels and epochs (the usual summary)
       feat_st           NEURAL's feat_st dictionary entry (also a summary)
@@ -154,8 +233,9 @@ def compute_features(data_dict, features):
     from NEURAL_py_EEG import generate_all_features
 
     data = copy.deepcopy(data_dict)  # every call starts from the same data
+    settings = {} if params is None else {"params": params}
     per_epochs, names, feat_st, median_ch, median_all = generate_all_features.generate_all_features(
-        data, feat_set=list(features)
+        data, feat_set=list(features), **settings
     )
     result = {}
     for feature in features:

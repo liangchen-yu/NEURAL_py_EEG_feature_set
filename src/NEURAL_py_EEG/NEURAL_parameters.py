@@ -2,6 +2,8 @@
 # Date started: 17/02/2020
 # Last updated: <17/02/2020 12:42:22 (BrianM)>
 
+import numpy as np
+
 # Feature names removed to match neural_eeg_features 0.6.1 (see
 # docs/CHANGES_vs_neural_eeg_features_0.6.1.md). Requesting one raises
 # ValueError. rEEG_CV still uses the rEEG mean and SD internally.
@@ -28,6 +30,111 @@ def check_feature_names(feat_names):
             "see docs/CHANGES_vs_neural_eeg_features_0.6.1.md"
             % ", ".join(repr(name) for name in removed)
         )
+
+
+# Every feature name this package computes: the 23 names of
+# neural_eeg_features 0.6.1, in its order (the default FEATURE_SET_ALL below;
+# tests/test_params.py checks they are equal). A params['FEATURE_SET_ALL'] may
+# list fewer, or another order; the names that generate_all_features accepts
+# are these, whatever FEATURE_SET_ALL lists.
+SUPPORTED_FEATURES = (
+    'spectral_power', 'spectral_relative_power', 'spectral_flatness', 'spectral_diff', 'spectral_entropy',
+    'spectral_edge_frequency', 'FD', 'amplitude_skew', 'amplitude_kurtosis', 'amplitude_env_mean',
+    'amplitude_env_SD', 'connectivity_BSI', 'connectivity_corr', 'connectivity_coh_mean', 'rEEG_median',
+    'rEEG_lower_margin', 'rEEG_upper_margin', 'rEEG_CV', 'rEEG_asymmetry', 'IBI_length_max',
+    'IBI_length_median', 'IBI_burst_prc', 'IBI_burst_number',
+)
+
+
+def check_requested_features(feat_names):
+    """Raise ValueError unless every name in feat_names (a list of names, or
+    one name) is in SUPPORTED_FEATURES: first the removed names, with
+    check_feature_names' message, then any other unknown name (e.g. a
+    misspelt one), naming them all. generate_all_features calls this before
+    any work, so an unknown name cannot yield a column of NaN."""
+    check_feature_names(feat_names)
+    if isinstance(feat_names, str):
+        feat_names = [feat_names]
+    unknown = [name for name in feat_names if name not in SUPPORTED_FEATURES]
+    if unknown:
+        raise ValueError(
+            "Unknown feature name(s) %s; the supported features are NEURAL_parameters.SUPPORTED_FEATURES: %s"
+            % (", ".join(repr(name) for name in unknown), ", ".join(SUPPORTED_FEATURES))
+        )
+
+
+# Settings whose value may also be None: main_fd reads a None FD 'method' as
+# 'higuchi'.
+MAY_BE_NONE = {("FD", "method")}
+# 0/1 switches, which may also be given as True / False.
+SWITCHES = {("REMOVE_ART",), ("rEEG", "APPLY_LOG_LINEAR_SCALE")}
+
+
+def check_parameters(params):
+    """Raise ValueError unless params has the structure of NEURAL_parameters():
+    a dictionary with exactly the same keys at every level (none missing, none
+    unknown), each value of the same kind as its default: a dictionary, a
+    string, a list (list, tuple or numpy array of at least one dimension; not
+    a zero-dimensional array) or a number (int or float; not
+    True or False, except for the 0/1 switches in SWITCHES). The settings in
+    MAY_BE_NONE may also be None. The message names every problem, e.g.
+    "params['spectral']['L_window'] is missing". The values themselves (e.g.
+    the name of a window type) are checked by the functions that use them.
+
+    generate_all_features calls this on the params it is given, so a mistyped
+    or missing setting is reported before any feature is computed instead of
+    being ignored or failing deep inside a feature function.
+    """
+    problems = []
+    _check_setting(params, NEURAL_parameters(), (), problems)
+    if problems:
+        raise ValueError("params does not match the structure of NEURAL_parameters(): "
+                         + "; ".join(problems))
+
+
+def _setting_name(keys):
+    return "params" + "".join("[%r]" % (key,) for key in keys)
+
+
+def _kind(value):
+    if isinstance(value, dict):
+        return "a dictionary"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        return "a zero-dimensional array"  # e.g. np.array("spectral_power"): not a list
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return "a list"
+    if isinstance(value, (bool, np.bool_)):
+        return "True or False"
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return "a number"
+    if value is None:
+        return "None"
+    return "a %s" % type(value).__name__
+
+
+def _check_setting(value, default, keys, problems):
+    """Add to problems every way in which value differs in structure from
+    default (see check_parameters); keys is the path to value."""
+    if isinstance(default, dict):
+        if not isinstance(value, dict):
+            problems.append("%s must be a dictionary like %s, not %s" % (
+                _setting_name(keys), _setting_name(keys).replace("params", "NEURAL_parameters()", 1), _kind(value)))
+            return
+        problems.extend("%s is missing" % _setting_name(keys + (key,)) for key in default if key not in value)
+        problems.extend("%s is not a setting of NEURAL_parameters()" % _setting_name(keys + (key,))
+                        for key in value if key not in default)
+        for key in default:
+            if key in value:
+                _check_setting(value[key], default[key], keys + (key,), problems)
+        return
+    expected, found = _kind(default), _kind(value)
+    if found == expected or (value is None and keys in MAY_BE_NONE) \
+            or (found == "True or False" and keys in SWITCHES):
+        return
+    problems.append("%s must be %s%s, not %s (%r)" % (
+        _setting_name(keys), expected, " or None" if keys in MAY_BE_NONE else "", found, value))
 
 
 def NEURAL_parameters():
