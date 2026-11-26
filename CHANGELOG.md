@@ -144,7 +144,8 @@ ported one at a time; each is listed, with before, after, reason and verificatio
   Before, it also made a final epoch padded with NaN whenever the recording did not end on an
   epoch boundary (`ceil((N - (L_epoch - L_hop)) / L_hop)` epochs; at 50 % overlap the padding
   alone stayed below the 50 % NaN threshold, so that epoch was kept unless NaN already in the
-  signal pushed it over the threshold). The hop, the 50 % NaN rule,
+  signal brought its NaN share to 50 % or more: the rule skipped an epoch whose NaN share
+  reached or exceeded 50 %). The hop, the 50 % NaN rule,
   the windows within an epoch and the unused copy `preprocessing_EEG.overlap_epochs` are
   unchanged.
   - A recording shorter than one epoch (64 s with the current settings) raises `ValueError`

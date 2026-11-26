@@ -860,12 +860,19 @@ def build_report(res):
                 rows.append([nice(label) + (f" ({FILTER_USE[label]})" if label in FILTER_USE else ""),
                              fmt(in_rel), ba, fmt(gain_ba), fmt(exact), fmt(excess), fmt(rule), sos, fmt(gain_sos),
                              fmt(reduction)])
+            if c == "artefacts":
+                which = "here every 64 s epoch contains NaN, so those columns exist only for the 256 Hz filters."
+            elif any(B[spec[0]]["inputs_nan_free"] < B[spec[0]]["inputs"]
+                     for spec in FILTER_SPECS if spec[5] == "epochs"):
+                # JSON files from a run before generate_all_features used complete epochs only
+                which = ("here the last epoch of each channel, which runs past the end of the recording and is "
+                         "padded with NaN.")
+            else:
+                which = ("here none: generate_all_features uses complete epochs only, so no epoch runs past the "
+                         "end of the recording.")
             text = (f"Table B1 ({CASE_LABEL[c].lower()}). Inputs that contain NaN are left out of the two "
                     "\"exact\" columns, because NEURAL fills NaN gaps by PCHIP interpolation, which is not linear: "
-                    + ("here every 64 s epoch contains NaN, so those columns exist only for the 256 Hz filters."
-                       if c == "artefacts" else "here none: generate_all_features now uses complete epochs only, so "
-                       "no epoch runs past the end of the recording. (results.md, made before that "
-                       "change, left out the last epoch of each channel, which was padded with NaN.)"))
+                    + which)
             block = [text, "", table(["Filter", "Input change", "(b, a) output change", "(b, a) gain", "Exact response",
                                       "(b, a) / exact", "Rule of thumb 2.2e-16 × max 1/|A|", "SOS output change",
                                       "SOS gain", "(b, a) / SOS"], rows), ""]
