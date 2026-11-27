@@ -415,10 +415,11 @@ def test_supported_features_are_the_default_feature_set():
     (["spectral_power", "spectral_pwr", "FD", "IBI_burst_pct"], CHANNELS, ["spectral_pwr", "IBI_burst_pct"]),
 ], ids=["misspelt IBI name", "misspelt connectivity name, one channel", "valid and invalid names"])
 @pytest.mark.parametrize("custom", [False, True], ids=["default params", "custom FEATURE_SET_ALL"])
-def test_unknown_feature_names_raise_before_any_work(feat_set, channels, unknown, custom, monkeypatch):
+def test_unknown_feature_names_raise_before_feature_computation(feat_set, channels, unknown, custom, monkeypatch):
     """Every requested name must be a supported feature (SUPPORTED_FEATURES,
     not the possibly shortened FEATURE_SET_ALL): ValueError naming the
-    unknown ones, before any feature is computed. (Without this check, a
+    unknown ones, after the input is loaded and its channels screened, before
+    any feature is computed. (Without this check, a
     misspelt name got a column of NaN on paths that return before the name
     is used, e.g. IBI without the burst detector or connectivity with one
     channel.)"""

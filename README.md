@@ -107,7 +107,7 @@ computed. Each feature group reads its own settings (`params['spectral']`, `['am
 features are computed and which columns there are; `params['FEATURE_SET_ALL']` is the
 feature set when `feat_set` is not given (and orders the columns). Every requested name must
 be one of the 23 supported features (`NEURAL_parameters.SUPPORTED_FEATURES`), else
-`ValueError` names it before anything is computed. Each band gets its own
+`ValueError` names it (after loading the input and screening its channels, before computing any feature). Each band gets its own
 column: edges that are whole numbers or 0.5 are named as before (`05_4`, `13_30`), any other
 edge in full with `p` for the decimal point (`[0.5, 4.1]` gives `05_4p1`); two bands with the
 same edges raise `ValueError`.
@@ -577,6 +577,16 @@ reference values for each group.
   (`made_with`): running `tests/make_reference.py` there again gives
   byte-identical files. `made_with` records the operating system as Python
   reports it (Python 3.7, for example, calls Windows 11 "Windows 10").
+- The reference package: `tests/data/reference_neural_eeg_features_0.6.1.json`
+  holds the outputs of neural_eeg_features 0.6.1 at its default settings for
+  three synthetic inputs (`tests/neural_eeg_features_inputs.py`), made once by
+  `tests/make_reference_neural_eeg_features.py` in that package's environment
+  (its header lists the command; the file records its provenance).
+  `tests/test_neural_eeg_features_defaults.py` compares this repository's
+  defaults with them, per feature, input and level; the comparisons that
+  cannot pass until a later change of the steps to match it are strict
+  expected failures naming that change. The reference package is not needed
+  to run the tests.
 
 **Tested versions** (native, Windows 11, Python 3.14.7; historical: all 28 tests of the suite at that time passed)
 

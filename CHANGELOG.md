@@ -205,7 +205,7 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     All default column names are unchanged.
   - Feature names: a requested name that is not one of the 23 supported features
     (`NEURAL_parameters.SUPPORTED_FEATURES`, `check_requested_features`) raises `ValueError`
-    naming it, before any feature is computed (before: also `ValueError`, but later and with
+    naming it, after the input is loaded and its channels screened and before any feature is computed (before: also `ValueError`, but later and with
     varying messages); the 7 removed names keep their own message. A supported feature
     missing from a custom `FEATURE_SET_ALL` is accepted.
   - The tests now pass the original NEURAL's settings explicitly: `tests/neural_outputs.py`
@@ -222,6 +222,16 @@ ported one at a time; each is listed, with before, after, reason and verificatio
     `generate_all_features` call, the printed text and the warnings are identical (only the
     line numbers of the warnings raised in `generate_all_features.py` moved). New:
     `tests/test_params.py`.
+- **Fixtures from the reference package** (no output changes):
+  `tests/data/reference_neural_eeg_features_0.6.1.json`, the outputs of neural_eeg_features
+  0.6.1 at its default settings for three synthetic inputs (64 Hz 300 s; 256 Hz 128 s; 64 Hz
+  192 s with NaN runs; `tests/neural_eeg_features_inputs.py`), with their provenance (package
+  version and module hashes, library versions, settings, input recipe, seed and checksums,
+  generator hash). Made once by `tests/make_reference_neural_eeg_features.py` in the reference
+  package's environment; the tests need only the file. `tests/test_neural_eeg_features_defaults.py`
+  compares this NEURAL at its defaults with them, per feature, input and level (summary, per
+  channel, per epoch); each comparison that cannot pass yet is a strict expected failure naming
+  the change that will make it pass (3c-3f, steps 4-6). Existing reference files unchanged.
 
 ### Output changes
 - `spectral_diff` (default feature set): fix ported from the MATLAB NEURAL, MATLAB commit

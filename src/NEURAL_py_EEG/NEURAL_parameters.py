@@ -50,8 +50,9 @@ def check_requested_features(feat_names):
     """Raise ValueError unless every name in feat_names (a list of names, or
     one name) is in SUPPORTED_FEATURES: first the removed names, with
     check_feature_names' message, then any other unknown name (e.g. a
-    misspelt one), naming them all. generate_all_features calls this before
-    any work, so an unknown name cannot yield a column of NaN."""
+    misspelt one), naming them all. generate_all_features calls this after
+    loading the input and screening its channels, before computing any
+    feature, so an unknown name cannot yield a column of NaN."""
     check_feature_names(feat_names)
     if isinstance(feat_names, str):
         feat_names = [feat_names]

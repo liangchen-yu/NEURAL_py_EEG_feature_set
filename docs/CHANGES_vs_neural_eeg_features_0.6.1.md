@@ -11,7 +11,8 @@ the reference package's `docs/definitions.md`.
 | 2 | `amplitude_skew` and `amplitude_kurtosis`: bias-corrected moments, as in the reference package | Biased moments: `abs(scipy.stats.skew(x, nan_policy="omit"))` and `scipy.stats.kurtosis(x, fisher=False)` (Pearson). `main_amplitude` removed NaN first; called directly, kurtosis gave NaN for NaN and both gave NaN for +/-inf. No explicit rule for short input: 2 values gave skewness 0 and kurtosis 1, 3 values gave a kurtosis. Constant input: NaN from scipy's own check | `abs(scipy.stats.skew(x, bias=False))` and `scipy.stats.kurtosis(x, fisher=False, bias=False)` (Pearson) on the finite values only (NaN and +/-inf ignored). NaN for fewer than 3 (skewness) or 4 (kurtosis) values, and for constant values (range not above eps * max(1, max abs value)), as in the reference package's `amplitude.py`. In the test data every value rose slightly (skewness +0.04-0.06 %, kurtosis +0.04-0.16 %). The skewness magnitude always increases with the correction (factor sqrt(n(n-1))/(n-2), +0.037 % for a full 64 s epoch, n = 4096), unless it is 0; the kurtosis usually does for EEG-like data but can decrease for very flat signals (4096 alternating -1/+1 values: 1.0 becomes 0.99902). No other output changes | "Skewness and kurtosis: correction to the earlier audit" (the reference package uses `bias=False`, and `fisher=False` for Pearson kurtosis; the older NEURAL Python port uses biased moments; example `[-2, -1, 0, 1, 2]`: kurtosis 1.8, original 1.7); "Feature catalogue" (absolute bias-corrected skewness; bias-corrected Pearson kurtosis, not excess kurtosis) | Same arrays through the reference package's `amplitude_features()` (in its own environment) and this repository's functions: 488 arrays (456 real band-filtered epochs of the synthetic test recordings, 32 synthetic edge cases), every finite value exactly equal (max abs and rel difference 0), NaN in the same places (skewness 10, kurtosis 12). Exact comparison with the previous code (commit 2bd0742) on all test cases: 15,070 values of other features, 0 differ; of each moment's 748 values, 684 changed, 64 NaN in both. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_moments` and the original: all pass, difference 0. New `tests/test_amplitude_moments.py` (closed-form formulas, the reference package's example, short, constant, NaN and +/-inf inputs) |
 | 3 | Band bins: each frequency band an independent closed interval (new `spectral_features.band_bins`), in all six band loops (`spectral_power`, `spectral_flatness`, `spectral_entropy`, `spectral_diff`, `connectivity_BSI`, `connectivity_coh`) and the total band of `gen_spectrum` (relative power, `spectral_edge_frequency`) | Chained rule, as in MATLAB NEURAL: the first band from `ceil(low * f)` to `floor(high * f)` (f = FFT bins per Hz); each later band from the previous band's last bin to `floor(high * f)`; indices clipped to [0, Nyquist], so a band above Nyquist repeated the Nyquist bin; no roundoff allowance. When an edge lay between bins, the later band also took the bin below its lower edge; gaps between disjoint bands were filled | Each band: bins `ceil(low * N / Fs)` to `floor(high * N / Fs)`, inclusive, independently of the other bands, with two floating-point steps allowed at each edge, at most the Nyquist bin (the reference package's `spectral.band_slice`). **This departs from MATLAB NEURAL's chained rule.** For bands that are not empty and not clipped at 0 or Nyquist, with no edge within about two floating-point steps of a bin, the two rules select the same bins exactly when, for every band after the first, `ceil(low * N / Fs)` equals the previous band's `floor(high * N / Fs)` (the two edges fall within the same bin step; usually one shared edge exactly on a bin); the first band's lower edge and the last band's upper edge do not matter. Exceptions: a band left empty under both rules can agree although the equation fails, and an edge within about two floating-point steps of a bin can agree or differ because of the two-step allowance. At 64 Hz with the default bands and windows this holds for every window-based spectrum; disjoint bands never satisfy it, and a non-integer sampling rate can break it for the default bands (63.93 Hz, 2 s window: theta started at bin 7, now 8). A band that a feature uses whose upper edge is not above its lower edge, or not below the Nyquist frequency, raises `ValueError` naming the band; a band with no bin gives NaN without warnings (details below). In the test data only `spectral_power` and `spectral_relative_power` change, and only in epochs that contain NaN (the periodogram is shortened by NaN removal): in the artefacts recording 108 of 168 values per feature, by up to 3.5 % (median 0.15 %), all lower; summary per band up to -0.42 % (`spectral_power`, theta) and -2.4 % (`spectral_relative_power`, theta); delta unchanged. The clean recording is unchanged | The reference package's `docs/definitions.md` documents independent closed intervals as the intended definition: "Feature conventions retained from version 0.1" (each band uses bins from `ceil(low * N / fs)` through `floor(high * N / fs)`, inclusive, with two floating-point steps for roundoff; shared boundary bins; a 4 Hz tone in a 16-second epoch at 98 Hz contributes bin 64 to both delta and theta). "NEURAL Python and MATLAB spectral comparison" (band bins: independent closed intervals in the reference package, chained in NEURAL Python and MATLAB; the chained loops can include a bin below the band's lower limit and fill gaps between disjoint bands). "Spectral details beyond the equations" (the paper's band sums include both endpoints; independent closed intervals follow that interpretation) | (a) `band_bins` against the reference package's `band_slice`: 61,864 band/length/rate cases (3,864 on and off the bin grid, 4,000 random off-grid bands, 54,000 edges within 4 floating-point steps of a bin; the two-step allowance changes the bins in over 21,000 of them): 0 differences. (b) `spectral_power` and `spectral_relative_power` against its `spectral_features()` on 38 NaN-free arrays (off-grid and on-grid lengths at 64 and 100 Hz; default, preterm, off-grid and disjoint bands; 1,140 values): max abs difference 1.7e-13, max rel 3.2e-15, 422 exactly equal (the previous rule: up to 6 % with preterm bands, and far more where an edge bin carried a strong component). (c) Exact comparison with the previous code (commit bac1c62) on all test cases: only `spectral_power` and `spectral_relative_power` change (342 of the 16,566 values compared, all lower; every other value is identical), only in epochs that contain NaN; the clean recording's 21 outputs are byte-identical. Regression tests against the new reference section `with_neural_eeg_features_0.6.1_band_bins` and the original: all pass, difference 0. New `tests/test_band_bins.py`: the rule; `ValueError` for inverted, above-Nyquist and partly above-Nyquist bands and total bands, in each feature that uses the band; NaN without warnings for bands and total bands with no bin, and for coherence also with one 8 s window or an all-zero input; each feature checks only the bands it uses (the edge frequency needs no `freq_bands`, 27.5 Hz as before on the test signal); the exact FFT length in coherence (float16 sampling rate); the condition under which the two rules agree (3,000 seeded random draws); and, for every setting read from the stored reference files, identical values of the six other bin-based features under both rules |
 | 4 | Complete epochs only (`generate_all_features.overlap_epochs`, `epoch_count`, `get_max_num_epochs`) | `ceil((N - (L_epoch - L_hop)) / L_hop)` epochs, at least 1: a final epoch padded with NaN whenever the recording did not end on an epoch boundary (at 50 % overlap the padding alone stayed below the 50 % NaN threshold, so it was kept unless NaN already in the signal brought its NaN share to 50 % or more: the rule skipped an epoch whose NaN share reached or exceeded 50 %); a recording shorter than one epoch gave one padded epoch (values if more than half of it was data, else NaN) | `(N - L_epoch) // L_hop + 1` complete epochs, no padding; the rows of `feats_median_ch` always equal the epochs. A recording shorter than one epoch raises `ValueError` naming both lengths when an epoch-based feature is requested, before any feature is computed; IBI-only and empty requests return (0 rows). The hop, the 50 % NaN rule and the windows within an epoch are unchanged. In the test data the complete epochs are bit-identical and only the padded epoch is dropped (300 s: 9 to 8 epochs); the summaries of 18 of 19 features change, by up to 15.7 % (clean) and 42.9 % (artefacts) at 300 s, because there are only 9 epochs; with the same generator up to 3.9 % / 3.7 % at 30 min and 1.4 % / 2.1 % at 60 min | The reference package's `docs/definitions.md`, "Missing data and recording boundaries": "Ordinary epochs are complete windows only: trailing incomplete data do not create an additional epoch. A recording shorter than one ordinary epoch raises `ValueError` when ordinary features are requested." "Version changes and validation limits": version 0.1's "... padded ordinary final epochs are replaced by the processing defaults above". Its README: "Shorter recordings raise `ValueError`; incomplete trailing windows are discarded." | (a) The reference package on identical preprocessed arrays (clean 300 s test recording) at NEURAL_py-like settings: `spectral_diff` agrees to 4.7e-16 relative per band, 1.1e-15 per channel and 2.2e-15 per channel and epoch (256 values); before, -8.4 % to +10.1 % per band. (b) Exact comparison with commit 90543fc on all test cases: 80 per-epoch arrays lose exactly the final epoch, every kept epoch bit-identical; the window, read-only and few-channel connectivity outputs are unchanged; IBI outputs unchanged (NaN on these signals). (c) Recording lengths L - 1, L, L + H - 1, L + H and L + 3H at 64, 256 and 63.93 Hz. Regression tests against the new section `with_neural_eeg_features_0.6.1_complete_epochs` and the original: all pass; a guard checks that the section equals the earlier values on the complete epochs. New `tests/test_complete_epochs.py` |
-| 5 | Settings can be passed to `generate_all_features` (`params`), and the tests pass the original NEURAL's settings explicitly; prepares the adoption of the reference package's default settings. No output change | `generate_all_features` took no settings: it and every feature function it called made their own `NEURAL_parameters()`, so other settings needed an edited `NEURAL_parameters.py` (or a replaced function). The tests used the defaults, which equal the original's settings | `generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None, params=None)`: `None` as before; otherwise `params` is checked (`NEURAL_parameters.check_parameters`: the structure of `NEURAL_parameters()`, `ValueError` naming each problem, before anything is computed), copied and never changed, and every feature call gets its own copy of its group's settings. `size_feature` also takes `params`. Not read from `params` (as before, not read by `generate_all_features`): the preprocessing settings, and the top-level `FREQ_BANDS` and `FILTER_REPLACE_ARTEFACTS` (each group has its own). Column names: a single band `[[low, high]]` now works (it failed with `IndexError`), distinct bands get distinct names (fractional edges were cut to integers, so `[0.5, 4.1]` and `[0.5, 4.9]` shared one name and value), the same band twice raises `ValueError`, and a given `feat_set` decides the columns (a feature missing from `FEATURE_SET_ALL` failed), while a name that is not one of the 23 supported features raises `ValueError` before any work (`check_requested_features`); every default column name is unchanged, and all three faults also occur on the previous code with an edited `NEURAL_parameters()` (section 5). `tests/neural_outputs.py` writes out the original's settings (`original_settings()`), which the regression tests, the edge cases, the sensitivity experiment and the unit tests with recorded values pass explicitly | The reference package's configuration is explicit too (`FeatureConfig`, passed as `config` to `extract_features`); the regression tests must keep checking the original's settings once the defaults are the reference package's (step 3, settings) | (a) Exact comparison with commit c205097 on every stored case (52, incl. the default call with IBI): every output of all 48 `generate_all_features` calls (336,614 numbers, 2,451 other values), the helpers' results, the printed text (31,495 characters) and the 130 warnings are identical with `params=None` and with the original settings passed; only the line numbers of 16 warnings raised in `generate_all_features.py` moved (+51 lines: the new docstrings and helpers). (b) `original_settings()` equals the original's `NEURAL_parameters()` (its `FEATURE_SET_ALL` less the 7 removed names), in its own environment and in the 2020 environment. (c) `make_reference.py`, unchanged, run with the original through the changed test helpers: all five reference files byte-identical to the committed ones. New `tests/test_params.py` (114 tests, one a strict expected failure): each setting read by `generate_all_features` and the five feature groups reaches its feature (values equal to the feature function's with the same settings, and different from the defaults); `params` unchanged by a call; calls with different settings independent; bad `params` raise `ValueError` naming the setting; the 74 default column names, one-band lists and arrays, fractional and repeated bands, `feat_set` against `FEATURE_SET_ALL`, and unknown feature names |
+| 5 | Settings can be passed to `generate_all_features` (`params`), and the tests pass the original NEURAL's settings explicitly; prepares the adoption of the reference package's default settings. No output change | `generate_all_features` took no settings: it and every feature function it called made their own `NEURAL_parameters()`, so other settings needed an edited `NEURAL_parameters.py` (or a replaced function). The tests used the defaults, which equal the original's settings | `generate_all_features(data, save_p_l=None, channel_names=None, feat_set=None, params=None)`: `None` as before; otherwise `params` is checked (`NEURAL_parameters.check_parameters`: the structure of `NEURAL_parameters()`, `ValueError` naming each problem, before anything is computed), copied and never changed, and every feature call gets its own copy of its group's settings. `size_feature` also takes `params`. Not read from `params` (as before, not read by `generate_all_features`): the preprocessing settings, and the top-level `FREQ_BANDS` and `FILTER_REPLACE_ARTEFACTS` (each group has its own). Column names: a single band `[[low, high]]` now works (it failed with `IndexError`), distinct bands get distinct names (fractional edges were cut to integers, so `[0.5, 4.1]` and `[0.5, 4.9]` shared one name and value), the same band twice raises `ValueError`, and a given `feat_set` decides the columns (a feature missing from `FEATURE_SET_ALL` failed), while a name that is not one of the 23 supported features raises `ValueError` after the input is loaded and its channels screened, before any feature is computed (`check_requested_features`); every default column name is unchanged, and all three faults also occur on the previous code with an edited `NEURAL_parameters()` (section 5). `tests/neural_outputs.py` writes out the original's settings (`original_settings()`), which the regression tests, the edge cases, the sensitivity experiment and the unit tests with recorded values pass explicitly | The reference package's configuration is explicit too (`FeatureConfig`, passed as `config` to `extract_features`); the regression tests must keep checking the original's settings once the defaults are the reference package's (step 3, settings) | (a) Exact comparison with commit c205097 on every stored case (52, incl. the default call with IBI): every output of all 48 `generate_all_features` calls (336,614 numbers, 2,451 other values), the helpers' results, the printed text (31,495 characters) and the 130 warnings are identical with `params=None` and with the original settings passed; only the line numbers of 16 warnings raised in `generate_all_features.py` moved (+51 lines: the new docstrings and helpers). (b) `original_settings()` equals the original's `NEURAL_parameters()` (its `FEATURE_SET_ALL` less the 7 removed names), in its own environment and in the 2020 environment. (c) `make_reference.py`, unchanged, run with the original through the changed test helpers: all five reference files byte-identical to the committed ones. New `tests/test_params.py` (114 tests, one a strict expected failure): each setting read by `generate_all_features` and the five feature groups reaches its feature (values equal to the feature function's with the same settings, and different from the defaults); `params` unchanged by a call; calls with different settings independent; bad `params` raise `ValueError` naming the setting; the 74 default column names, one-band lists and arrays, fractional and repeated bands, `feat_set` against `FEATURE_SET_ALL`, and unknown feature names |
+| 6 | Fixtures from the reference package at its default settings, and tests comparing this NEURAL at its defaults with them. No output change | No comparison with the reference package in the tests (only one-off comparisons, reported here) | `tests/data/reference_neural_eeg_features_0.6.1.json` (963,387 bytes): the reference package's summary, per-channel and per-epoch values at its defaults, `FeatureConfig()`, for three synthetic inputs (64 Hz 300 s; 256 Hz 128 s, no IBI; 64 Hz 192 s with NaN runs), with their provenance. Made once by `tests/make_reference_neural_eeg_features.py` in the reference package's environment; the tests need only the file. `tests/test_neural_eeg_features_defaults.py` compares each feature per input and level (summary, per channel, per epoch by start time) within the regression tolerance; each comparison that cannot pass yet is a strict expected failure naming the change that will make it pass | Step 3 adopts the reference package's defaults, and steps 4-6 its filters, missing-data rules and burst detector; the fixtures check each of these changes against the reference package itself, in CI, without it | The generator stops unless the imported package is 0.6.1 with 15 pinned module files (SHA-256); run twice, it wrote byte-identical files, and left the reference package's folder unchanged. Now: 7 tests pass (provenance, inputs rebuilt bit for bit, NEURAL's channel pairs, the stored settings are the reference defaults); all 170 comparisons are expected failures. Checked that the comparisons can pass: with 16 s / 75 % epochs set in memory (what 3d changes), `spectral_power` and `spectral_relative_power` agree at all three levels on both inputs without NaN, and every other comparison still fails for its stated reason (section 6) |
 
 ## 1. Removal of 7 features
 
@@ -501,7 +502,7 @@ the previous code when the same settings were made by editing
   renames the columns of non-default bands with such edges (e.g. `[0.5, 3.5]`
   was `05_3`, now `05_3p5`; an upper edge of 0.5 was `0`, now `05`). Two bands
   with the same edges would still share a name, so that raises `ValueError`
-  naming both bands, before anything is computed.
+  naming both bands, before any feature is computed.
 - The columns came from `params['FEATURE_SET_ALL']` filtered by `feat_set`, so
   a requested feature missing from `FEATURE_SET_ALL` was computed and then
   failed (`ValueError: Feature name spectral_power__05_4 does not exist`; also
@@ -516,7 +517,7 @@ the previous code when the same settings were made by editing
   (`NEURAL_parameters.SUPPORTED_FEATURES`, the default `FEATURE_SET_ALL`;
   `check_requested_features`, which first applies `check_feature_names` and
   its message for the 7 removed names), else `ValueError` names the unknown
-  ones, before any feature is computed. A supported feature missing from a
+  ones, after the input is loaded and its channels screened, before any feature is computed. A supported feature missing from a
   custom `FEATURE_SET_ALL` is accepted. On the previous code a misspelt name
   also raised `ValueError`, but later and with varying messages (`Feature name
   IBI_burst_pct__05_30 does not exist`, `Feature function not found:
@@ -580,6 +581,117 @@ as an unknown option), and the Welch PSD with the analytic threshold (the
 switch to Bartlett warns with a list as its message, which Python's warnings
 registry cannot store, from the second warning on). A test records them; the
 last goes with the switch to Bartlett in step 3.
+
+## 6. Fixtures from the reference package
+
+**What is stored.** `tests/data/reference_neural_eeg_features_0.6.1.json`
+holds the reference package's outputs at its default settings
+(`FeatureConfig()`, also stored with `to_dict()`) for three synthetic inputs,
+built by `tests/neural_eeg_features_inputs.py` from the regression tests'
+clean synthetic recording (`synthetic_edf.make_signals('clean')`, seed 2026)
+without NEURAL's code: NEURAL's 8 bipolar channels in microvolts, and
+
+| Input | Rate | Length | Features |
+| --- | --- | --- | --- |
+| `64 Hz` | every 4th sample, no filter | 300 s | all 23 |
+| `256 Hz` | as recorded | 128 s (one rEEG window) | 19 (the reference's burst detector needs 64 Hz) |
+| `64 Hz with missing samples` | every 4th sample | 192 s, NaN in C3_O1 50-52 s, F4_C4 120-130 s, one sample of C4_T4 | all 23 |
+
+The reference package gets NEURAL's channel names and, explicitly, the three
+left/right pairs NEURAL finds (C3_O1/C4_O2, C3_T3/C4_T4, F3_C3/F4_C4; it pairs
+only names with `-` itself). Per input and feature: the band names and edges,
+the summary, the per-channel values (not for connectivity) and the per-epoch
+values with their start times and duration (not for IBI). Provenance: package
+version and the SHA-256 of its 15 module files, Python, NumPy, SciPy, pandas,
+Numba and OS versions, the input recipe, seed, NaN runs and the SHA-256 of
+each input array, and the generator's name and SHA-256.
+
+**How it was made.** `tests/make_reference_neural_eeg_features.py`, run once in
+the reference package's own environment (Python 3.14.5, NumPy 2.4.6, SciPy
+1.18.1, pandas 2.3.3, Numba 0.65.1) with `-B` and `NUMBA_CACHE_DIR` outside
+both repositories, so that nothing is written into the reference package's
+folder (checked: no file there added or changed). It stops unless the package
+is 0.6.1 with the pinned module files. Two runs gave byte-identical files.
+CI does not need the reference package: the test reads the file and imports
+the generator only for its pinned values.
+
+**The comparison** (`tests/test_neural_eeg_features_defaults.py`): this
+NEURAL at its defaults (`params=None`), one `generate_all_features` call per
+feature, against the reference values within the regression tolerance (rtol
+1e-9, atol 1e-12, NaN as NaN). Levels: summary (`feats_median_all`); per
+channel (the median over epochs of `feats_per_epochs`; not for IBI, as NEURAL
+returns no per-channel IBI values); per epoch, matching NEURAL's epoch rows to
+the reference's start times (for rEEG, other rows must be NaN). The column of
+each reference band follows NEURAL's naming of its edges (IBI: `05_30`).
+The test first checks the fixture: its provenance and the generator's hash,
+the rebuilt inputs bit for bit, NEURAL's pairs, and that its settings are the
+reference defaults.
+
+**Expected failures.** Each comparison needs some of the changes 3c (rEEG), 3d
+(epochs), 3e (spectral windows and FFT), 3f (connectivity), step 4 (filters),
+5 (missing data) and 6 (burst detector and IBI); until the last of them is
+made, it is a strict expected failure naming it (`DONE` lists the changes
+made; each commit adds its own):
+
+| Features | Needs | Passes after |
+| --- | --- | --- |
+| `spectral_power`, `spectral_relative_power` | 3d | 3d |
+| `spectral_flatness`, `_entropy`, `_diff`, `_edge_frequency` | 3d, 3e | 3e |
+| `connectivity_BSI`, `connectivity_coh_mean` | 3d, 3f | 3f |
+| amplitude (4), `FD`, `connectivity_corr` | 3d, step 4 | step 4 |
+| rEEG (5) | 3c, step 4 | step 4 |
+| IBI (4), summary only | step 6 | step 6 |
+| every non-IBI feature but rEEG, input with NaN | also step 5 | step 5 |
+
+The markers were checked where that was cheap to emulate. The reference's
+whole-recording filter (order-21 SOS, Tukey taper, NaN set to 0 and
+restored), applied with NEURAL's own feature code:
+- with 16 s / 75 % epochs, `spectral_power` and `spectral_relative_power`
+  match on both inputs without NaN (3d alone);
+- with those epochs, the amplitude features, FD and `connectivity_corr`
+  match on both inputs without NaN (3d and step 4); on the input with NaN
+  they do not (step 5);
+- with 3c's 128 s / 50 % windows on the 1-20 Hz band, the rEEG features
+  match on all three inputs, the one with NaN included. The reference's
+  rEEG bypasses the epoch NaN threshold, and the NaN here leave every
+  128 s window below NEURAL's 50 %, so rEEG needs 3c and step 4, not
+  step 5 (corrected from the first version of this test).
+
+On the input with NaN, the reference gives NaN for channel-epochs that NEURAL's
+50 % rule keeps: 44 per spectral feature, 11 for the spectral edge frequency
+and FD, 8 per amplitude feature, none for rEEG. Connectivity excludes a pair
+with NaN in the epoch. So step 5 is needed there. The spectral (3e) and
+connectivity (3f) markers were not emulated: NEURAL has no FFT padding yet.
+
+**Strictness.** Each comparison first requires NEURAL's columns to be exactly
+the reference's bands (no extra, no missing band), then compares the values.
+An expected failure accepts only `AssertionError`, so any error from
+`generate_all_features` or from the test itself fails the test. The one
+exception is listed in `KNOWN_FAILURES`, and it is matched exactly. On the input
+with NaN, `connectivity_coh_mean` fails: `ValueError: Feature function not
+found: connectivity_coh_mean`, caused in `gen_cross_spectrum` by `ValueError:
+operands could not be broadcast together with shapes (7,257) (8,257)`. The
+NaN samples are removed separately from the two channels of a pair, which
+leaves them different numbers of windows. It is raised as
+`KnownExtractorFailure`. Only its own two comparisons (summary, per epoch)
+expect it. They expect either it or a mismatch (`AssertionError`) until their
+remaining changes (3f and step 5) are made. With 16 s epochs (3d) the crash
+does not occur and the values still differ, so they stay expected failures
+without a change to the test. Any other exception on that input is still an
+error. Checked by injection: an unrelated `RuntimeError` in
+`spectral_flatness` makes its 9 comparisons fail; with 16 s / 75 % epochs
+emulated, exactly the 12 `spectral_power` and `spectral_relative_power`
+comparisons pass; and with a 2-3 Hz spectral band added as well, those 12
+fail.
+
+Now 170 comparisons are expected failures and none passes. Checked that they
+can pass: with the epochs set to 16 s / 75 % in memory, `spectral_power` and
+`spectral_relative_power` agree at all three levels on both inputs without NaN
+(the 64 Hz per-epoch comparison covers 2,304 values per feature); the others
+still fail, for different windows and FFT length (spectral, BSI), filters (FD),
+the missing 1-20 Hz rEEG band (rEEG), and NaN handling (input with NaN). On these
+signals the reference's IBI values are 100 % burst, one burst, no inter-burst
+interval; without the burst detector NEURAL gives NaN.
 
 ## Assumptions for review
 
